@@ -94,6 +94,8 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 if [[ -z "$DATABASE_URL" || -z "$JWT_SECRET" || -z "$OPENAI_API_KEY" ]]; then
   echo "Bootstrap finished, but deploy was skipped because one or more secrets were empty."
   echo "Set DATABASE_URL, JWT_SECRET and OPENAI_API_KEY, then rerun this script."
+  echo "Supabase DATABASE_URL example:"
+  echo "postgresql+psycopg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require"
   exit 0
 fi
 

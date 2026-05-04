@@ -5,7 +5,7 @@ Para bajar costo en el MVP, usamos Google Cloud solo para ejecutar la API y deja
 Arquitectura recomendada:
 
 - Cloud Run: API FastAPI containerizada.
-- Neon Postgres: base de datos PostgreSQL administrada externa.
+- Supabase Postgres: base de datos PostgreSQL administrada externa.
 - Secret Manager: `DATABASE_URL`, `JWT_SECRET`, `OPENAI_API_KEY`.
 - Artifact Registry: imagen Docker del backend.
 - Cloud Build: build y deploy repetible desde `cloudbuild.yaml`.
@@ -14,32 +14,33 @@ Arquitectura recomendada:
 
 Cloud SQL es solido, pero para un MVP B2B temprano suele ser mas caro que la API misma porque la instancia queda provisionada. Para esta etapa conviene un Postgres serverless externo.
 
-Decision simple: usar Neon para DB. Motivo: el sistema solo necesita PostgreSQL, no auth/storage/realtime de Supabase, y Neon ofrece Postgres serverless con plan gratuito y escala a cero cuando esta inactivo.
+Decision simple: usar Supabase para DB. Motivo: ya te deja PostgreSQL administrado, consola SQL, backups basicos y la posibilidad de sumar Auth/Storage mas adelante si el producto lo necesita.
 
-## 1. Crear base en Neon
+## 1. Crear base en Supabase
 
-1. Crear proyecto en Neon.
-2. Crear una database, por ejemplo `evaluation360`.
-3. Copiar el connection string pooled si esta disponible.
+1. Crear un proyecto en Supabase.
+2. Ir a `Project Settings` -> `Database`.
+3. Copiar el connection string de Postgres.
+4. Para Cloud Run, preferir el pooler en `Session mode` si esta disponible.
 4. Debe quedar con este formato aproximado:
 
 ```text
-postgresql+psycopg://USER:PASSWORD@HOST/evaluation360?sslmode=require
+postgresql+psycopg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
-Importante: el backend usa SQLAlchemy con `psycopg`, por eso el prefijo debe ser `postgresql+psycopg://`.
+Importante: Supabase suele mostrar el prefijo como `postgresql://`. Para este backend hay que usar `postgresql+psycopg://` porque SQLAlchemy esta configurado con `psycopg`.
 
 ## 2. Inicializar tablas
 
-Ejecutar el SQL de [database/init.sql](../database/init.sql) contra Neon.
+Ejecutar el SQL de [database/init.sql](../database/init.sql) contra Supabase.
 
 Opciones:
 
-- Desde la consola SQL de Neon, pegando el contenido de `database/init.sql`.
+- Desde `SQL Editor` de Supabase, pegando el contenido de `database/init.sql`.
 - Desde una terminal con `psql`:
 
 ```bash
-psql "postgresql://USER:PASSWORD@HOST/evaluation360?sslmode=require" -f database/init.sql
+psql "postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require" -f database/init.sql
 ```
 
 ## 3. Variables de Google Cloud
@@ -69,7 +70,7 @@ cd RRHH
 export PROJECT_ID="tu-proyecto-gcp-unico"
 export BILLING_ACCOUNT_ID="XXXXXX-XXXXXX-XXXXXX"
 export REGION="us-central1"
-export DATABASE_URL="postgresql+psycopg://USER:PASSWORD@HOST/evaluation360?sslmode=require"
+export DATABASE_URL="postgresql+psycopg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require"
 export JWT_SECRET="usar-un-secret-largo"
 export OPENAI_API_KEY="sk-proj-tu-api-key"
 ```
@@ -104,7 +105,7 @@ gcloud artifacts repositories create $AR_REPO \
 ## 6. Crear secretos
 
 ```bash
-printf "%s" "postgresql+psycopg://USER:PASSWORD@HOST/evaluation360?sslmode=require" \
+printf "%s" "postgresql+psycopg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require" \
   | gcloud secrets create rrhh-database-url --data-file=-
 
 printf "%s" "cambiar-por-un-jwt-secret-largo" \
@@ -169,9 +170,9 @@ Respuesta esperada:
 {"status":"ok"}
 ```
 
-## Alternativa Supabase
+## Nota Supabase
 
-Supabase tambien sirve si queres centralizar Auth, Storage o Realtime mas adelante. Para este MVP no lo necesitamos, por eso la decision mas simple es Neon + Cloud Run.
+Si usas el connection string directo en vez del pooler, tambien funciona, pero en Cloud Run el pooler ayuda a evitar exceso de conexiones cuando el servicio escala horizontalmente.
 
 ## Nota CTO
 

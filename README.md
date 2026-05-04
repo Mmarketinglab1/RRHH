@@ -35,7 +35,7 @@ Para hacerlo desde Cloud Shell, usar [scripts/gcp-bootstrap.sh](scripts/gcp-boot
 La configuracion preparada usa:
 
 - Cloud Run para el backend FastAPI.
-- Neon Postgres para datos multi-tenant, evitando Cloud SQL en el MVP.
+- Supabase Postgres para datos multi-tenant, evitando Cloud SQL en el MVP.
 - Secret Manager para credenciales y API keys.
 - Artifact Registry + Cloud Build para build y deploy.
 
