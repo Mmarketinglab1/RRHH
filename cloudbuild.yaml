@@ -13,14 +13,14 @@ steps:
     args:
       - build
       - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
       - ./backend
 
   - id: push-api-image
     name: gcr.io/cloud-builders/docker
     args:
       - push
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
 
   - id: deploy-cloud-run
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -30,7 +30,7 @@ steps:
       - deploy
       - ${_SERVICE}
       - --image
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
       - --region
       - ${_REGION}
       - --platform
@@ -42,4 +42,4 @@ steps:
       - DATABASE_URL=${_DATABASE_URL_SECRET}:latest,JWT_SECRET=${_JWT_SECRET_SECRET}:latest,OPENAI_API_KEY=${_OPENAI_API_KEY_SECRET}:latest
 
 images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
