@@ -51,6 +51,41 @@ SERVICE="rrhh-api"
 AR_REPO="rrhh"
 ```
 
+## Opcion rapida con Cloud Shell
+
+Como en esta maquina local no esta instalado `gcloud`, el camino mas simple es usar Google Cloud Shell.
+
+1. Abrir [Google Cloud Shell](https://shell.cloud.google.com/).
+2. Clonar el repo:
+
+```bash
+git clone https://github.com/Mmarketinglab1/RRHH.git
+cd RRHH
+```
+
+3. Exportar variables:
+
+```bash
+export PROJECT_ID="tu-proyecto-gcp-unico"
+export BILLING_ACCOUNT_ID="XXXXXX-XXXXXX-XXXXXX"
+export REGION="us-central1"
+export DATABASE_URL="postgresql+psycopg://USER:PASSWORD@HOST/evaluation360?sslmode=require"
+export JWT_SECRET="usar-un-secret-largo"
+export OPENAI_API_KEY="sk-proj-tu-api-key"
+```
+
+4. Ejecutar bootstrap:
+
+```bash
+bash scripts/gcp-bootstrap.sh
+```
+
+Si no sabes tu billing account:
+
+```bash
+gcloud billing accounts list
+```
+
 ## 4. Habilitar APIs
 
 ```bash

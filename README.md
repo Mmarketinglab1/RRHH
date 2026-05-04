@@ -30,6 +30,7 @@ docker compose up --build
 ## Deploy en Google Cloud
 
 La guia de deploy esta en [docs/deploy-google-cloud.md](docs/deploy-google-cloud.md).
+Para hacerlo desde Cloud Shell, usar [scripts/gcp-bootstrap.sh](scripts/gcp-bootstrap.sh).
 
 La configuracion preparada usa:
 
