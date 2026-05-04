@@ -34,7 +34,7 @@ La guia de deploy esta en [docs/deploy-google-cloud.md](docs/deploy-google-cloud
 La configuracion preparada usa:
 
 - Cloud Run para el backend FastAPI.
-- Cloud SQL PostgreSQL para datos multi-tenant.
+- Neon Postgres para datos multi-tenant, evitando Cloud SQL en el MVP.
 - Secret Manager para credenciales y API keys.
 - Artifact Registry + Cloud Build para build y deploy.
 

@@ -1,36 +1,64 @@
-# Deploy en Google Cloud
+# Deploy en Google Cloud sin Cloud SQL
 
-Arquitectura recomendada para el MVP:
+Para bajar costo en el MVP, usamos Google Cloud solo para ejecutar la API y dejamos PostgreSQL en un proveedor externo serverless.
+
+Arquitectura recomendada:
 
 - Cloud Run: API FastAPI containerizada.
-- Cloud SQL PostgreSQL: base de datos multi-tenant.
+- Neon Postgres: base de datos PostgreSQL administrada externa.
 - Secret Manager: `DATABASE_URL`, `JWT_SECRET`, `OPENAI_API_KEY`.
 - Artifact Registry: imagen Docker del backend.
 - Cloud Build: build y deploy repetible desde `cloudbuild.yaml`.
 
-## 1. Variables
+## Por que no Cloud SQL en el MVP
 
-Reemplazar valores segun tu proyecto:
+Cloud SQL es solido, pero para un MVP B2B temprano suele ser mas caro que la API misma porque la instancia queda provisionada. Para esta etapa conviene un Postgres serverless externo.
+
+Decision simple: usar Neon para DB. Motivo: el sistema solo necesita PostgreSQL, no auth/storage/realtime de Supabase, y Neon ofrece Postgres serverless con plan gratuito y escala a cero cuando esta inactivo.
+
+## 1. Crear base en Neon
+
+1. Crear proyecto en Neon.
+2. Crear una database, por ejemplo `evaluation360`.
+3. Copiar el connection string pooled si esta disponible.
+4. Debe quedar con este formato aproximado:
+
+```text
+postgresql+psycopg://USER:PASSWORD@HOST/evaluation360?sslmode=require
+```
+
+Importante: el backend usa SQLAlchemy con `psycopg`, por eso el prefijo debe ser `postgresql+psycopg://`.
+
+## 2. Inicializar tablas
+
+Ejecutar el SQL de [database/init.sql](../database/init.sql) contra Neon.
+
+Opciones:
+
+- Desde la consola SQL de Neon, pegando el contenido de `database/init.sql`.
+- Desde una terminal con `psql`:
+
+```bash
+psql "postgresql://USER:PASSWORD@HOST/evaluation360?sslmode=require" -f database/init.sql
+```
+
+## 3. Variables de Google Cloud
 
 ```bash
 PROJECT_ID="tu-proyecto-gcp"
 REGION="us-central1"
 SERVICE="rrhh-api"
 AR_REPO="rrhh"
-DB_INSTANCE="rrhh-postgres"
-DB_NAME="evaluation360"
-DB_USER="rrhh_app"
-DB_PASSWORD="usar-un-password-fuerte"
 ```
 
-## 2. Habilitar APIs
+## 4. Habilitar APIs
 
 ```bash
 gcloud config set project $PROJECT_ID
-gcloud services enable run.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
 ```
 
-## 3. Crear Artifact Registry
+## 5. Crear Artifact Registry
 
 ```bash
 gcloud artifacts repositories create $AR_REPO \
@@ -38,50 +66,28 @@ gcloud artifacts repositories create $AR_REPO \
   --location=$REGION
 ```
 
-## 4. Crear Cloud SQL PostgreSQL
+## 6. Crear secretos
 
 ```bash
-gcloud sql instances create $DB_INSTANCE \
-  --database-version=POSTGRES_16 \
-  --tier=db-f1-micro \
-  --region=$REGION
+printf "%s" "postgresql+psycopg://USER:PASSWORD@HOST/evaluation360?sslmode=require" \
+  | gcloud secrets create rrhh-database-url --data-file=-
 
-gcloud sql databases create $DB_NAME --instance=$DB_INSTANCE
+printf "%s" "cambiar-por-un-jwt-secret-largo" \
+  | gcloud secrets create rrhh-jwt-secret --data-file=-
 
-gcloud sql users create $DB_USER \
-  --instance=$DB_INSTANCE \
-  --password=$DB_PASSWORD
+printf "%s" "sk-proj-tu-api-key" \
+  | gcloud secrets create rrhh-openai-api-key --data-file=-
 ```
 
-Para inicializar tablas, ejecutar `database/init.sql` contra Cloud SQL. La forma mas directa es usar Cloud SQL Auth Proxy local o Cloud Shell con `psql`.
-
-## 5. Crear secretos
-
-Obtener el connection name:
+Si el secreto ya existe:
 
 ```bash
-INSTANCE_CONNECTION_NAME="$(gcloud sql instances describe $DB_INSTANCE --format='value(connectionName)')"
+printf "%s" "nuevo-valor" | gcloud secrets versions add rrhh-database-url --data-file=-
 ```
 
-Crear `DATABASE_URL` usando socket Unix de Cloud Run:
+## 7. Permisos
 
-```bash
-DATABASE_URL="postgresql+psycopg://$DB_USER:$DB_PASSWORD@/$DB_NAME?host=/cloudsql/$INSTANCE_CONNECTION_NAME"
-
-printf "%s" "$DATABASE_URL" | gcloud secrets create rrhh-database-url --data-file=-
-printf "%s" "cambiar-por-un-jwt-secret-largo" | gcloud secrets create rrhh-jwt-secret --data-file=-
-printf "%s" "sk-proj-tu-api-key" | gcloud secrets create rrhh-openai-api-key --data-file=-
-```
-
-Si ya existen, usar:
-
-```bash
-printf "%s" "$DATABASE_URL" | gcloud secrets versions add rrhh-database-url --data-file=-
-```
-
-## 6. Permisos para Cloud Build y Cloud Run
-
-Cloud Build debe poder desplegar Cloud Run y usar Artifact Registry. En proyectos nuevos puede hacer falta:
+Cloud Build debe poder desplegar Cloud Run y escribir imagenes. El runtime de Cloud Run debe poder leer secretos.
 
 ```bash
 PROJECT_NUMBER="$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')"
@@ -102,38 +108,36 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$RUNTIME_SA" \
-  --role="roles/cloudsql.client"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:$RUNTIME_SA" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
-## 7. Deploy
+## 8. Deploy
 
 Desde la raiz del repo:
 
 ```bash
-INSTANCE_CONNECTION_NAME="$(gcloud sql instances describe $DB_INSTANCE --format='value(connectionName)')"
-
 gcloud builds submit \
   --config cloudbuild.yaml \
-  --substitutions _REGION=$REGION,_SERVICE=$SERVICE,_AR_REPO=$AR_REPO,_INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME
+  --substitutions _REGION=$REGION,_SERVICE=$SERVICE,_AR_REPO=$AR_REPO
 ```
 
-## 8. Probar
+## 9. Probar
 
 ```bash
 SERVICE_URL="$(gcloud run services describe $SERVICE --region=$REGION --format='value(status.url)')"
 curl "$SERVICE_URL/health"
 ```
 
-La respuesta esperada:
+Respuesta esperada:
 
 ```json
 {"status":"ok"}
 ```
 
+## Alternativa Supabase
+
+Supabase tambien sirve si queres centralizar Auth, Storage o Realtime mas adelante. Para este MVP no lo necesitamos, por eso la decision mas simple es Neon + Cloud Run.
+
 ## Nota CTO
 
-Para el MVP dejamos `--allow-unauthenticated` porque la API maneja JWT y los endpoints publicos de encuesta necesitan acceso sin login. En produccion conviene revisar CORS, rate limiting, dominios permitidos y politicas de seguridad por entorno.
+Dejamos `--allow-unauthenticated` porque la API maneja JWT y los endpoints publicos de encuesta necesitan acceso sin login. En produccion conviene agregar CORS por dominio, rate limiting y separar entornos `staging`/`production`.
