@@ -27,6 +27,17 @@ docker compose up --build
 - Health: http://localhost:8000/health
 - Docs: http://localhost:8000/docs
 
+## Deploy en Google Cloud
+
+La guia de deploy esta en [docs/deploy-google-cloud.md](docs/deploy-google-cloud.md).
+
+La configuracion preparada usa:
+
+- Cloud Run para el backend FastAPI.
+- Cloud SQL PostgreSQL para datos multi-tenant.
+- Secret Manager para credenciales y API keys.
+- Artifact Registry + Cloud Build para build y deploy.
+
 ## Decisiones simples
 
 - Multi-tenant: todos los recursos de negocio tienen `company_id`.

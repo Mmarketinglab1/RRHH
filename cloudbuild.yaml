@@ -1,0 +1,48 @@
+substitutions:
+  _REGION: us-central1
+  _SERVICE: rrhh-api
+  _AR_REPO: rrhh
+  _INSTANCE_CONNECTION_NAME: CHANGE_ME_PROJECT:us-central1:rrhh-postgres
+  _DATABASE_URL_SECRET: rrhh-database-url
+  _JWT_SECRET_SECRET: rrhh-jwt-secret
+  _OPENAI_API_KEY_SECRET: rrhh-openai-api-key
+  _OPENAI_MODEL: gpt-4.1-mini
+
+steps:
+  - id: build-api-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
+      - ./backend
+
+  - id: push-api-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
+
+  - id: deploy-cloud-run
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --add-cloudsql-instances
+      - ${_INSTANCE_CONNECTION_NAME}
+      - --set-env-vars
+      - OPENAI_MODEL=${_OPENAI_MODEL}
+      - --set-secrets
+      - DATABASE_URL=${_DATABASE_URL_SECRET}:latest,JWT_SECRET=${_JWT_SECRET_SECRET}:latest,OPENAI_API_KEY=${_OPENAI_API_KEY_SECRET}:latest
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$SHORT_SHA
