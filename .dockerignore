@@ -6,4 +6,6 @@ __pycache__/
 .venv/
 node_modules/
 .next/
+frontend/node_modules/
+frontend/.next/
 postgres_data/

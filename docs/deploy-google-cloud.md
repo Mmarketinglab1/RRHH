@@ -157,6 +157,8 @@ gcloud builds submit \
   --substitutions _REGION=$REGION,_SERVICE=$SERVICE,_AR_REPO=$AR_REPO
 ```
 
+El script `scripts/gcp-bootstrap.sh` tambien despliega el frontend con `cloudbuild.frontend.yaml`, usando la URL real de la API como `NEXT_PUBLIC_API_URL`.
+
 ## 9. Probar
 
 ```bash

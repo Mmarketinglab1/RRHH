@@ -5,6 +5,7 @@ MVP multi-tenant para evaluaciones 360 B2B.
 ## Stack
 
 - Backend: FastAPI, SQLAlchemy, PostgreSQL
+- Frontend: Next.js
 - IA: OpenAI API
 - Local: Docker Compose
 
@@ -26,6 +27,7 @@ docker compose up --build
 
 - Health: http://localhost:8000/health
 - Docs: http://localhost:8000/docs
+- Frontend: http://localhost:3000
 
 ## Deploy en Google Cloud
 
@@ -35,6 +37,7 @@ Para hacerlo desde Cloud Shell, usar [scripts/gcp-bootstrap.sh](scripts/gcp-boot
 La configuracion preparada usa:
 
 - Cloud Run para el backend FastAPI.
+- Cloud Run para el frontend Next.js.
 - Supabase Postgres para datos multi-tenant, evitando Cloud SQL en el MVP.
 - Secret Manager para credenciales y API keys.
 - Artifact Registry + Cloud Build para build y deploy.

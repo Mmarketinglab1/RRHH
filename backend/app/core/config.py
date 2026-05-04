@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    cors_origins: str = "*"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

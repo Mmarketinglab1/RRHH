@@ -131,3 +131,20 @@ def create_assignment(
     db.commit()
     db.refresh(assignment)
     return assignment
+
+
+@router.get("/{evaluation_id}/assignments", response_model=list[AssignmentRead])
+def list_assignments(
+    evaluation_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[EvaluatorAssignment]:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    return list(
+        db.scalars(
+            select(EvaluatorAssignment).where(
+                EvaluatorAssignment.company_id == current_user.company_id,
+                EvaluatorAssignment.evaluation_id == evaluation_id,
+            )
+        )
+    )

@@ -1,0 +1,43 @@
+substitutions:
+  _REGION: us-central1
+  _FRONTEND_SERVICE: rrhh-web
+  _AR_REPO: rrhh
+  _API_URL: https://rrhh-api-udcvzoylva-uc.a.run.app
+  _IMAGE_TAG: latest
+
+steps:
+  - id: build-frontend-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - NEXT_PUBLIC_API_URL=${_API_URL}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_FRONTEND_SERVICE}:${_IMAGE_TAG}
+      - ./frontend
+
+  - id: push-frontend-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_FRONTEND_SERVICE}:${_IMAGE_TAG}
+
+  - id: deploy-frontend-cloud-run
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_FRONTEND_SERVICE}
+      - --image
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_FRONTEND_SERVICE}:${_IMAGE_TAG}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --set-env-vars
+      - NEXT_PUBLIC_API_URL=${_API_URL}
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_FRONTEND_SERVICE}:${_IMAGE_TAG}

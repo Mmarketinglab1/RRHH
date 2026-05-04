@@ -5,6 +5,7 @@ PROJECT_ID="${PROJECT_ID:-}"
 BILLING_ACCOUNT_ID="${BILLING_ACCOUNT_ID:-}"
 REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-rrhh-api}"
+FRONTEND_SERVICE="${FRONTEND_SERVICE:-rrhh-web}"
 AR_REPO="${AR_REPO:-rrhh}"
 DATABASE_URL="${DATABASE_URL:-}"
 JWT_SECRET="${JWT_SECRET:-}"
@@ -99,11 +100,19 @@ if [[ -z "$DATABASE_URL" || -z "$JWT_SECRET" || -z "$OPENAI_API_KEY" ]]; then
   exit 0
 fi
 
-echo "Deploying to Cloud Run via Cloud Build..."
+echo "Deploying API to Cloud Run via Cloud Build..."
 gcloud builds submit \
   --config cloudbuild.yaml \
   --substitutions "_REGION=$REGION,_SERVICE=$SERVICE,_AR_REPO=$AR_REPO,_OPENAI_MODEL=$OPENAI_MODEL"
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.url)')"
+
+echo "Deploying frontend to Cloud Run via Cloud Build..."
+gcloud builds submit \
+  --config cloudbuild.frontend.yaml \
+  --substitutions "_REGION=$REGION,_FRONTEND_SERVICE=$FRONTEND_SERVICE,_AR_REPO=$AR_REPO,_API_URL=$SERVICE_URL"
+
+FRONTEND_URL="$(gcloud run services describe "$FRONTEND_SERVICE" --region="$REGION" --format='value(status.url)')"
 echo "Deployed: $SERVICE_URL"
 echo "Health check: $SERVICE_URL/health"
+echo "Frontend: $FRONTEND_URL"
