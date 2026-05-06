@@ -9,7 +9,12 @@ app = FastAPI(title="Evaluation 360 AI SaaS", version="0.1.0")
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",")],
+    allow_origins=[
+        origin.strip()
+        for origin in settings.cors_origins.split(",")
+        if origin.strip()
+    ],
+    allow_origin_regex=r"https://rrhh-web-[a-z0-9-]+\.run\.app|https://rrhh-web-[a-z0-9-]+-[a-z]+\.a\.run\.app|https://rrhh-web-[0-9]+\.us-central1\.run\.app",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -19,6 +24,11 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/debug/cors")
+def debug_cors() -> dict[str, str]:
+    return {"status": "ok", "cors_origins": settings.cors_origins}
 
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])

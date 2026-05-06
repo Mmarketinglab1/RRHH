@@ -38,7 +38,7 @@ steps:
       - managed
       - --allow-unauthenticated
       - --set-env-vars
-      - OPENAI_MODEL=${_OPENAI_MODEL}
+      - OPENAI_MODEL=${_OPENAI_MODEL},CORS_ORIGINS=*
       - --set-secrets
       - DATABASE_URL=${_DATABASE_URL_SECRET}:latest,JWT_SECRET=${_JWT_SECRET_SECRET}:latest,OPENAI_API_KEY=${_OPENAI_API_KEY_SECRET}:latest
 

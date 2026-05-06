@@ -3,7 +3,7 @@
 import { BarChart3, LogOut, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, Evaluation } from "@/lib/api";
+import { api, API_URL, ApiError, Evaluation } from "@/lib/api";
 
 type Mode = "login" | "register";
 
@@ -13,6 +13,7 @@ export default function HomePage() {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [apiStatus, setApiStatus] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("rrhh_token");
@@ -26,6 +27,18 @@ export default function HomePage() {
     }
     window.addEventListener("rrhh_auth_invalid", handleInvalidAuth);
     return () => window.removeEventListener("rrhh_auth_invalid", handleInvalidAuth);
+  }, []);
+
+  useEffect(() => {
+    async function checkApi() {
+      try {
+        await api<{ status: string }>("/health");
+        setApiStatus(`API conectada: ${API_URL}`);
+      } catch (error) {
+        setApiStatus(`API no accesible: ${API_URL}`);
+      }
+    }
+    void checkApi();
   }, []);
 
   useEffect(() => {
@@ -130,6 +143,7 @@ export default function HomePage() {
             <span className="brand-mark">360</span>
             <span>RRHH 360 AI</span>
           </div>
+          {apiStatus && <p className={apiStatus.includes("conectada") ? "success" : "error"}>{apiStatus}</p>}
           <div className="tabs" style={{ marginBottom: 18 }}>
             <button
               className={`tab ${mode === "login" ? "active" : ""}`}
