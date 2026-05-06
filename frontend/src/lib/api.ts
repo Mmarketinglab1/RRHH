@@ -104,6 +104,10 @@ export async function api<T>(
     } catch {
       // Keep response status text.
     }
+    if (response.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("rrhh_token");
+      window.dispatchEvent(new Event("rrhh_auth_invalid"));
+    }
     throw new ApiError(response.status, message);
   }
 

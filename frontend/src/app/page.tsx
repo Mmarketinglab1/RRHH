@@ -3,7 +3,7 @@
 import { BarChart3, LogOut, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { api, Evaluation } from "@/lib/api";
+import { api, ApiError, Evaluation } from "@/lib/api";
 
 type Mode = "login" | "register";
 
@@ -19,6 +19,13 @@ export default function HomePage() {
     if (saved) {
       setToken(saved);
     }
+    function handleInvalidAuth() {
+      setToken(null);
+      setEvaluations([]);
+      setMessage("Sesion vencida. Inicia sesion nuevamente.");
+    }
+    window.addEventListener("rrhh_auth_invalid", handleInvalidAuth);
+    return () => window.removeEventListener("rrhh_auth_invalid", handleInvalidAuth);
   }, []);
 
   useEffect(() => {
@@ -34,6 +41,10 @@ export default function HomePage() {
     try {
       setEvaluations(await api<Evaluation[]>("/evaluations", {}, authToken));
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setToken(null);
+        setEvaluations([]);
+      }
       setMessage(error instanceof Error ? error.message : "No se pudieron cargar evaluaciones");
     } finally {
       setLoading(false);
@@ -95,6 +106,10 @@ export default function HomePage() {
       event.currentTarget.reset();
       await loadEvaluations(token);
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setToken(null);
+        setEvaluations([]);
+      }
       setMessage(error instanceof Error ? error.message : "No se pudo crear la evaluacion");
     } finally {
       setLoading(false);
