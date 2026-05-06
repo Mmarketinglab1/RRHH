@@ -10,6 +10,12 @@ class ParticipantCreate(BaseModel):
     role: str | None = Field(default=None, max_length=120)
 
 
+class ParticipantUpdate(BaseModel):
+    email: EmailStr | None = None
+    full_name: str | None = Field(default=None, min_length=2, max_length=160)
+    role: str | None = Field(default=None, max_length=120)
+
+
 class ParticipantRead(BaseModel):
     id: UUID
     email: EmailStr

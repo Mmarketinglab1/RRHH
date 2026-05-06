@@ -1,6 +1,17 @@
 "use client";
 
-import { ArrowLeft, Bot, ClipboardList, Link as LinkIcon, Plus, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  ClipboardList,
+  Link as LinkIcon,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -26,6 +37,9 @@ export default function EvaluationDetail() {
   const [results, setResults] = useState<EvaluationResults | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editingCompetencyId, setEditingCompetencyId] = useState<string | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
 
   const firstCompetency = competencies[0]?.id || "";
 
@@ -169,6 +183,82 @@ export default function EvaluationDetail() {
     }
   }
 
+  async function patchResource<T>(path: string, payload: Record<string, unknown>) {
+    if (!token) return null;
+    setLoading(true);
+    setMessage("");
+    try {
+      const result = await api<T>(path, { method: "PATCH", body: JSON.stringify(payload) }, token);
+      await refreshAll(token);
+      return result;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo actualizar");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteResource(path: string, label: string) {
+    if (!token) return;
+    if (!window.confirm(`Eliminar ${label}? Esta accion no se puede deshacer.`)) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      await api(path, { method: "DELETE" }, token);
+      await refreshAll(token);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo eliminar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateCompetency(event: FormEvent<HTMLFormElement>, competencyId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const updated = await patchResource<Competency>(
+      `/evaluations/${evaluationId}/competencies/${competencyId}`,
+      {
+        name: data.get("name"),
+        description: data.get("description"),
+        weight: Number(data.get("weight") || 1),
+      },
+    );
+    if (updated) setEditingCompetencyId(null);
+  }
+
+  async function updateQuestion(event: FormEvent<HTMLFormElement>, questionId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const updated = await patchResource<Question>(
+      `/evaluations/${evaluationId}/questions/${questionId}`,
+      {
+        competency_id: data.get("competency_id"),
+        text: data.get("text"),
+        position: Number(data.get("position") || 0),
+      },
+    );
+    if (updated) setEditingQuestionId(null);
+  }
+
+  async function updateParticipant(event: FormEvent<HTMLFormElement>, participantId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const updated = await patchResource<Participant>(
+      `/evaluations/${evaluationId}/participants/${participantId}`,
+      {
+        email: data.get("email"),
+        full_name: data.get("full_name"),
+        role: data.get("role"),
+      },
+    );
+    if (updated) setEditingParticipantId(null);
+  }
+
   const participantOptions = useMemo(
     () =>
       participants.map((participant) => (
@@ -260,11 +350,45 @@ export default function EvaluationDetail() {
             <div className="list">
               {competencies.map((competency) => (
                 <div className="item" key={competency.id}>
-                  <div className="row">
-                    <strong>{competency.name}</strong>
-                    <span className="status-pill">Peso {competency.weight}</span>
-                  </div>
-                  {competency.description && <span className="muted">{competency.description}</span>}
+                  {editingCompetencyId === competency.id ? (
+                    <form className="form" onSubmit={(event) => updateCompetency(event, competency.id)}>
+                      <input className="input" defaultValue={competency.name} name="name" required />
+                      <textarea className="textarea" defaultValue={competency.description || ""} name="description" />
+                      <input className="input" defaultValue={competency.weight} min="0.1" name="weight" step="0.1" type="number" />
+                      <div className="toolbar">
+                        <button className="button" disabled={loading} type="submit">
+                          <Save size={16} />
+                          Guardar
+                        </button>
+                        <button className="button secondary" onClick={() => setEditingCompetencyId(null)} type="button">
+                          <X size={16} />
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="row">
+                        <strong>{competency.name}</strong>
+                        <span className="status-pill">Peso {competency.weight}</span>
+                      </div>
+                      {competency.description && <span className="muted">{competency.description}</span>}
+                      <div className="toolbar">
+                        <button className="button secondary" onClick={() => setEditingCompetencyId(competency.id)} type="button">
+                          <Pencil size={16} />
+                          Editar
+                        </button>
+                        <button
+                          className="button danger"
+                          onClick={() => deleteResource(`/evaluations/${evaluationId}/competencies/${competency.id}`, "competencia")}
+                          type="button"
+                        >
+                          <Trash2 size={16} />
+                          Borrar
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               {!competencies.length && <div className="empty-state">Agrega competencias para construir el formulario.</div>}
@@ -303,8 +427,48 @@ export default function EvaluationDetail() {
             <div className="list">
               {questions.map((question) => (
                 <div className="item" key={question.id}>
-                  <strong>{question.text}</strong>
-                  <span className="muted">Posicion {question.position}</span>
+                  {editingQuestionId === question.id ? (
+                    <form className="form" onSubmit={(event) => updateQuestion(event, question.id)}>
+                      <select className="select" defaultValue={question.competency_id} name="competency_id" required>
+                        {competencies.map((competency) => (
+                          <option key={competency.id} value={competency.id}>
+                            {competency.name}
+                          </option>
+                        ))}
+                      </select>
+                      <textarea className="textarea" defaultValue={question.text} name="text" required />
+                      <input className="input" defaultValue={question.position} name="position" type="number" />
+                      <div className="toolbar">
+                        <button className="button" disabled={loading} type="submit">
+                          <Save size={16} />
+                          Guardar
+                        </button>
+                        <button className="button secondary" onClick={() => setEditingQuestionId(null)} type="button">
+                          <X size={16} />
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <strong>{question.text}</strong>
+                      <span className="muted">Posicion {question.position}</span>
+                      <div className="toolbar">
+                        <button className="button secondary" onClick={() => setEditingQuestionId(question.id)} type="button">
+                          <Pencil size={16} />
+                          Editar
+                        </button>
+                        <button
+                          className="button danger"
+                          onClick={() => deleteResource(`/evaluations/${evaluationId}/questions/${question.id}`, "pregunta")}
+                          type="button"
+                        >
+                          <Trash2 size={16} />
+                          Borrar
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               {!questions.length && <div className="empty-state">Todavia no hay preguntas configuradas.</div>}
@@ -334,9 +498,43 @@ export default function EvaluationDetail() {
             <div className="list">
               {participants.map((participant) => (
                 <div className="item" key={participant.id}>
-                  <strong>{participant.full_name}</strong>
-                  <span className="muted">{participant.email}</span>
-                  {participant.role && <span className="status-pill">{participant.role}</span>}
+                  {editingParticipantId === participant.id ? (
+                    <form className="form" onSubmit={(event) => updateParticipant(event, participant.id)}>
+                      <input className="input" defaultValue={participant.email} name="email" required type="email" />
+                      <input className="input" defaultValue={participant.full_name} name="full_name" required />
+                      <input className="input" defaultValue={participant.role || ""} name="role" />
+                      <div className="toolbar">
+                        <button className="button" disabled={loading} type="submit">
+                          <Save size={16} />
+                          Guardar
+                        </button>
+                        <button className="button secondary" onClick={() => setEditingParticipantId(null)} type="button">
+                          <X size={16} />
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <strong>{participant.full_name}</strong>
+                      <span className="muted">{participant.email}</span>
+                      {participant.role && <span className="status-pill">{participant.role}</span>}
+                      <div className="toolbar">
+                        <button className="button secondary" onClick={() => setEditingParticipantId(participant.id)} type="button">
+                          <Pencil size={16} />
+                          Editar
+                        </button>
+                        <button
+                          className="button danger"
+                          onClick={() => deleteResource(`/evaluations/${evaluationId}/participants/${participant.id}`, "participante")}
+                          type="button"
+                        >
+                          <Trash2 size={16} />
+                          Borrar
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               {!participants.length && <div className="empty-state">Carga participantes para asignar evaluadores.</div>}

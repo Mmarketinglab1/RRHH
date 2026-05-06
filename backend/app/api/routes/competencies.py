@@ -8,7 +8,14 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.evaluation import Competency, Evaluation, Question
 from app.schemas.auth import CurrentUser
-from app.schemas.evaluation import CompetencyCreate, CompetencyRead, QuestionCreate, QuestionRead
+from app.schemas.evaluation import (
+    CompetencyCreate,
+    CompetencyRead,
+    CompetencyUpdate,
+    QuestionCreate,
+    QuestionRead,
+    QuestionUpdate,
+)
 
 router = APIRouter()
 
@@ -58,6 +65,51 @@ def list_competencies(
     )
 
 
+@router.patch("/{evaluation_id}/competencies/{competency_id}", response_model=CompetencyRead)
+def update_competency(
+    evaluation_id: UUID,
+    competency_id: UUID,
+    payload: CompetencyUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Competency:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    competency = db.get(Competency, competency_id)
+    if (
+        not competency
+        or competency.company_id != current_user.company_id
+        or competency.evaluation_id != evaluation_id
+    ):
+        raise HTTPException(status_code=404, detail="Competency not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(competency, field, value)
+    db.commit()
+    db.refresh(competency)
+    return competency
+
+
+@router.delete("/{evaluation_id}/competencies/{competency_id}", status_code=204)
+def delete_competency(
+    evaluation_id: UUID,
+    competency_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    competency = db.get(Competency, competency_id)
+    if (
+        not competency
+        or competency.company_id != current_user.company_id
+        or competency.evaluation_id != evaluation_id
+    ):
+        raise HTTPException(status_code=404, detail="Competency not found")
+
+    db.delete(competency)
+    db.commit()
+
+
 @router.post("/{evaluation_id}/questions", response_model=QuestionRead)
 def create_question(
     evaluation_id: UUID,
@@ -100,3 +152,56 @@ def list_questions(
             .order_by(Question.position.asc())
         )
     )
+
+
+@router.patch("/{evaluation_id}/questions/{question_id}", response_model=QuestionRead)
+def update_question(
+    evaluation_id: UUID,
+    question_id: UUID,
+    payload: QuestionUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Question:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    question = db.get(Question, question_id)
+    if (
+        not question
+        or question.company_id != current_user.company_id
+        or question.evaluation_id != evaluation_id
+    ):
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "competency_id" in updates:
+        competency = db.get(Competency, updates["competency_id"])
+        if (
+            not competency
+            or competency.company_id != current_user.company_id
+            or competency.evaluation_id != evaluation_id
+        ):
+            raise HTTPException(status_code=404, detail="Competency not found")
+    for field, value in updates.items():
+        setattr(question, field, value)
+    db.commit()
+    db.refresh(question)
+    return question
+
+
+@router.delete("/{evaluation_id}/questions/{question_id}", status_code=204)
+def delete_question(
+    evaluation_id: UUID,
+    question_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    question = db.get(Question, question_id)
+    if (
+        not question
+        or question.company_id != current_user.company_id
+        or question.evaluation_id != evaluation_id
+    ):
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    db.delete(question)
+    db.commit()

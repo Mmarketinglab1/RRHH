@@ -30,6 +30,12 @@ class CompetencyCreate(BaseModel):
     weight: Decimal = Field(default=Decimal("1.0"), gt=0)
 
 
+class CompetencyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=160)
+    description: str | None = None
+    weight: Decimal | None = Field(default=None, gt=0)
+
+
 class CompetencyRead(BaseModel):
     id: UUID
     evaluation_id: UUID
@@ -44,6 +50,12 @@ class QuestionCreate(BaseModel):
     competency_id: UUID
     text: str = Field(min_length=5)
     position: int = 0
+
+
+class QuestionUpdate(BaseModel):
+    competency_id: UUID | None = None
+    text: str | None = Field(default=None, min_length=5)
+    position: int | None = None
 
 
 class QuestionRead(BaseModel):

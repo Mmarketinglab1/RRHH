@@ -15,6 +15,7 @@ from app.schemas.participant import (
     CSVUploadResult,
     ParticipantCreate,
     ParticipantRead,
+    ParticipantUpdate,
 )
 from app.services.csv_service import parse_participants_csv
 
@@ -99,6 +100,53 @@ def list_participants(
             )
         )
     )
+
+
+@router.patch("/{evaluation_id}/participants/{participant_id}", response_model=ParticipantRead)
+def update_participant(
+    evaluation_id: UUID,
+    participant_id: UUID,
+    payload: ParticipantUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Participant:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    participant = db.get(Participant, participant_id)
+    if (
+        not participant
+        or participant.company_id != current_user.company_id
+        or participant.evaluation_id != evaluation_id
+    ):
+        raise HTTPException(status_code=404, detail="Participant not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "email" in updates and updates["email"] is not None:
+        updates["email"] = updates["email"].lower()
+    for field, value in updates.items():
+        setattr(participant, field, value)
+    db.commit()
+    db.refresh(participant)
+    return participant
+
+
+@router.delete("/{evaluation_id}/participants/{participant_id}", status_code=204)
+def delete_participant(
+    evaluation_id: UUID,
+    participant_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    participant = db.get(Participant, participant_id)
+    if (
+        not participant
+        or participant.company_id != current_user.company_id
+        or participant.evaluation_id != evaluation_id
+    ):
+        raise HTTPException(status_code=404, detail="Participant not found")
+
+    db.delete(participant)
+    db.commit()
 
 
 @router.post("/{evaluation_id}/assignments", response_model=AssignmentRead)
