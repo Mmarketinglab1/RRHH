@@ -66,6 +66,15 @@ create_or_update_secret() {
   fi
 }
 
+require_secret() {
+  local name="$1"
+
+  if ! gcloud secrets describe "$name" >/dev/null 2>&1; then
+    echo "Missing required secret $name."
+    return 1
+  fi
+}
+
 echo "Creating or updating secrets..."
 create_or_update_secret "rrhh-database-url" "$DATABASE_URL"
 create_or_update_secret "rrhh-jwt-secret" "$JWT_SECRET"
@@ -92,9 +101,9 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$RUNTIME_SA" \
   --role="roles/secretmanager.secretAccessor" >/dev/null
 
-if [[ -z "$DATABASE_URL" || -z "$JWT_SECRET" || -z "$OPENAI_API_KEY" ]]; then
-  echo "Bootstrap finished, but deploy was skipped because one or more secrets were empty."
-  echo "Set DATABASE_URL, JWT_SECRET and OPENAI_API_KEY, then rerun this script."
+if ! require_secret "rrhh-database-url" || ! require_secret "rrhh-jwt-secret" || ! require_secret "rrhh-openai-api-key"; then
+  echo "Bootstrap finished, but deploy was skipped because one or more required secrets are missing."
+  echo "Set DATABASE_URL, JWT_SECRET and OPENAI_API_KEY once, then rerun this script."
   echo "Supabase DATABASE_URL example:"
   echo "postgresql+psycopg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require"
   exit 0
