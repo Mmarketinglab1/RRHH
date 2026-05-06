@@ -80,12 +80,13 @@ export default function EvaluationDetail() {
     payload: Record<string, unknown>,
   ): Promise<T | null> {
     event.preventDefault();
+    const form = event.currentTarget;
     if (!token) return null;
     setLoading(true);
     setMessage("");
     try {
       const result = await api<T>(path, { method: "POST", body: JSON.stringify(payload) }, token);
-      event.currentTarget.reset();
+      form.reset();
       await refreshAll(token);
       return result;
     } catch (error) {
