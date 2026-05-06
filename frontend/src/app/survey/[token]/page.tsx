@@ -51,7 +51,7 @@ export default function SurveyPage() {
   }
 
   return (
-    <main className="shell">
+    <main className="shell survey-shell">
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">360</span>
@@ -61,6 +61,7 @@ export default function SurveyPage() {
       <section className="content">
         <div className="page-title">
           <div>
+            <span className="eyebrow">Encuesta confidencial</span>
             <h1>{survey?.evaluation_title || "Encuesta"}</h1>
             {survey && (
               <p className="muted">
@@ -76,9 +77,9 @@ export default function SurveyPage() {
         {survey && (
           <form className="form" onSubmit={submitSurvey}>
             {survey.questions.map((question) => (
-              <section className="panel" key={question.id}>
-                <h3>{question.text}</h3>
-                <p className="muted">{question.competency}</p>
+              <section className="panel survey-card" key={question.id}>
+                <span className="status-pill">{question.competency}</span>
+                <h3 style={{ marginTop: 12 }}>{question.text}</h3>
                 <div className="field">
                   <label>Puntaje 1 a 10</label>
                   <input
@@ -96,7 +97,7 @@ export default function SurveyPage() {
                 </div>
               </section>
             ))}
-            <button className="button" disabled={loading} type="submit">
+            <button className="button survey-submit" disabled={loading} type="submit">
               <Send size={16} />
               Enviar respuestas
             </button>

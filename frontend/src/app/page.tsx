@@ -100,10 +100,11 @@ export default function HomePage() {
 
   async function createEvaluation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     if (!token) return;
     setLoading(true);
     setMessage("");
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(form);
     try {
       await api<Evaluation>(
         "/evaluations",
@@ -116,7 +117,7 @@ export default function HomePage() {
         },
         token,
       );
-      event.currentTarget.reset();
+      form.reset();
       await loadEvaluations(token);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -211,13 +212,17 @@ export default function HomePage() {
       <section className="content">
         <div className="page-title">
           <div>
+            <span className="eyebrow">People analytics</span>
             <h1>Evaluaciones</h1>
             <p className="muted">Panel operativo para crear y medir evaluaciones 360.</p>
           </div>
-          <button className="button secondary" onClick={() => loadEvaluations()} type="button">
-            <RefreshCw size={16} />
-            Actualizar
-          </button>
+          <div className="toolbar">
+            <span className="status-pill">{evaluations.length} activas</span>
+            <button className="button secondary" onClick={() => loadEvaluations()} type="button">
+              <RefreshCw size={16} />
+              Actualizar
+            </button>
+          </div>
         </div>
 
         <div className="grid two">
@@ -248,12 +253,16 @@ export default function HomePage() {
             <div className="list">
               {evaluations.map((evaluation) => (
                 <Link className="item" href={`/evaluations/${evaluation.id}`} key={evaluation.id}>
-                  <strong>{evaluation.title}</strong>
+                  <div className="row">
+                    <strong>{evaluation.title}</strong>
+                    <span className="status-pill">{evaluation.status}</span>
+                  </div>
                   <span className="muted">{evaluation.description || "Sin descripcion"}</span>
-                  <span className="muted">Estado: {evaluation.status}</span>
                 </Link>
               ))}
-              {!evaluations.length && <p className="muted">Todavia no hay evaluaciones.</p>}
+              {!evaluations.length && (
+                <div className="empty-state">Todavia no hay evaluaciones activas.</div>
+              )}
             </div>
           </section>
         </div>

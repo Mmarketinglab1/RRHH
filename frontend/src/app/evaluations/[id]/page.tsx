@@ -209,14 +209,19 @@ export default function EvaluationDetail() {
             <Link className="muted" href="/">
               <ArrowLeft size={14} /> Volver
             </Link>
+            <span className="eyebrow">Evaluacion 360</span>
             <h1>{evaluation?.title || "Evaluacion"}</h1>
             <p className="muted">{evaluation?.description || "Sin descripcion"}</p>
+          </div>
+          <div className="toolbar">
+            <span className="status-pill">{competencies.length} competencias</span>
+            <span className="status-pill">{participants.length} participantes</span>
           </div>
         </div>
 
         {message && <p className={message.startsWith("Link") ? "success" : "error"}>{message}</p>}
 
-        <div className="grid three" style={{ marginBottom: 18 }}>
+        <div className="kpi-band">
           <section className="panel metric">
             <span className="muted">Promedio</span>
             <strong>{results?.average ?? 0}</strong>
@@ -255,10 +260,14 @@ export default function EvaluationDetail() {
             <div className="list">
               {competencies.map((competency) => (
                 <div className="item" key={competency.id}>
-                  <strong>{competency.name}</strong>
-                  <span className="muted">Peso {competency.weight}</span>
+                  <div className="row">
+                    <strong>{competency.name}</strong>
+                    <span className="status-pill">Peso {competency.weight}</span>
+                  </div>
+                  {competency.description && <span className="muted">{competency.description}</span>}
                 </div>
               ))}
+              {!competencies.length && <div className="empty-state">Agrega competencias para construir el formulario.</div>}
             </div>
           </section>
 
@@ -298,6 +307,7 @@ export default function EvaluationDetail() {
                   <span className="muted">Posicion {question.position}</span>
                 </div>
               ))}
+              {!questions.length && <div className="empty-state">Todavia no hay preguntas configuradas.</div>}
             </div>
           </section>
 
@@ -326,8 +336,10 @@ export default function EvaluationDetail() {
                 <div className="item" key={participant.id}>
                   <strong>{participant.full_name}</strong>
                   <span className="muted">{participant.email}</span>
+                  {participant.role && <span className="status-pill">{participant.role}</span>}
                 </div>
               ))}
+              {!participants.length && <div className="empty-state">Carga participantes para asignar evaluadores.</div>}
             </div>
           </section>
 
@@ -367,13 +379,16 @@ export default function EvaluationDetail() {
             <div className="list">
               {assignments.map((assignment) => (
                 <div className="item" key={assignment.id}>
-                  <strong>{assignment.relationship}</strong>
-                  <button className="button secondary" onClick={() => generateToken(assignment.id)} type="button">
-                    <LinkIcon size={16} />
-                    Link encuesta
-                  </button>
+                  <div className="row">
+                    <strong>{assignment.relationship}</strong>
+                    <button className="button secondary" onClick={() => generateToken(assignment.id)} type="button">
+                      <LinkIcon size={16} />
+                      Link encuesta
+                    </button>
+                  </div>
                 </div>
               ))}
+              {!assignments.length && <div className="empty-state">Crea asignaciones para generar links publicos.</div>}
             </div>
           </section>
         </div>
