@@ -36,6 +36,8 @@ steps:
       - ${_REGION}
       - --platform
       - managed
+      - --max-instances
+      - "5"
       - --allow-unauthenticated
       - --set-env-vars
       - OPENAI_MODEL=${_OPENAI_MODEL},CORS_ORIGINS=*

@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.models.evaluation import Competency, Evaluation, Question
 from app.models.report import AIReport
@@ -27,7 +28,9 @@ def _ensure_evaluation(db: Session, company_id: UUID, evaluation_id: UUID) -> No
 
 
 @router.post("/{evaluation_id}/ai/questions", response_model=GeneratedQuestionsResponse)
+@limiter.limit("10/day")
 def generate_questions(
+    request: Request,
     evaluation_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -76,7 +79,9 @@ def generate_questions(
 
 
 @router.post("/{evaluation_id}/ai/group-report", response_model=AIReportRead)
+@limiter.limit("10/day")
 def create_group_report(
+    request: Request,
     evaluation_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -96,7 +101,9 @@ def create_group_report(
 
 
 @router.post("/{evaluation_id}/ai/participants/{participant_id}/report", response_model=AIReportRead)
+@limiter.limit("10/day")
 def create_individual_report(
+    request: Request,
     evaluation_id: UUID,
     participant_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),

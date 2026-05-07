@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from app.core.security import (
     password_needs_rehash,
     verify_password,
 )
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.models.company import Company
 from app.models.user import User
@@ -17,7 +18,8 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
+@limiter.limit("3/day")
+def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
     company = Company(name=payload.company_name, domain=payload.company_domain)
     user = User(
         company=company,
@@ -36,7 +38,8 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     users = db.scalars(select(User).where(User.email == payload.email.lower())).all()
     if len(users) > 1:
         raise HTTPException(status_code=400, detail="Email belongs to multiple companies")
