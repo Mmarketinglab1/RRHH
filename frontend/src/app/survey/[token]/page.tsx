@@ -10,6 +10,7 @@ export default function SurveyPage() {
   const [survey, setSurvey] = useState<PublicSurvey | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [scores, setScores] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function loadSurvey() {
@@ -29,10 +30,19 @@ export default function SurveyPage() {
     if (!survey) return;
     setLoading(true);
     setMessage("");
+
+    // Validar que todas las preguntas tengan puntaje
+    const missingQuestion = survey.questions.find((question) => !scores[question.id]);
+    if (missingQuestion) {
+      setMessage("Por favor, asigna un puntaje a todas las preguntas antes de enviar.");
+      setLoading(false);
+      return;
+    }
+
     const data = new FormData(event.currentTarget);
     const responses = survey.questions.map((question) => ({
       question_id: question.id,
-      score: Number(data.get(`score_${question.id}`)),
+      score: scores[question.id] || 0,
       comment: String(data.get(`comment_${question.id}`) || ""),
     }));
 
@@ -42,6 +52,7 @@ export default function SurveyPage() {
         body: JSON.stringify({ responses }),
       });
       setMessage("Respuestas enviadas correctamente.");
+      setScores({});
       event.currentTarget.reset();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudieron enviar respuestas");
@@ -82,18 +93,28 @@ export default function SurveyPage() {
                 <h3 style={{ marginTop: 12 }}>{question.text}</h3>
                 <div className="field">
                   <label>Puntaje 1 a 10</label>
-                  <input
-                    className="input"
-                    max="10"
-                    min="1"
-                    name={`score_${question.id}`}
-                    required
-                    type="number"
-                  />
+                  <div className="rating-options">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        className={`rating-btn ${scores[question.id] === num ? "selected" : ""}`}
+                        onClick={() =>
+                          setScores((prev) => ({ ...prev, [question.id]: num }))
+                        }
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="field">
-                  <label>Comentario</label>
-                  <textarea className="textarea" name={`comment_${question.id}`} />
+                  <label>Comentario (opcional)</label>
+                  <textarea
+                    className="textarea"
+                    name={`comment_${question.id}`}
+                    placeholder="Describe brevemente el porqué de tu puntaje..."
+                  />
                 </div>
               </section>
             ))}
