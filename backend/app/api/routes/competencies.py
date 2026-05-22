@@ -1,7 +1,10 @@
+from io import BytesIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+import openpyxl
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -205,3 +208,167 @@ def delete_question(
 
     db.delete(question)
     db.commit()
+
+
+@router.get("/{evaluation_id}/competencies/import-template")
+def download_import_template(
+    evaluation_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Competencias y Preguntas"
+
+    # Set headers
+    headers = ["Competencia", "Descripción de la Competencia", "Peso", "Pregunta"]
+    ws.append(headers)
+
+    # Example rows
+    ws.append([
+        "Liderazgo",
+        "Habilidad para dirigir, coordinar e impulsar al equipo.",
+        1.0,
+        "¿El evaluado demuestra iniciativa para liderar nuevos proyectos?"
+    ])
+    ws.append([
+        "Liderazgo",
+        "Habilidad para dirigir, coordinar e impulsar al equipo.",
+        1.0,
+        "¿El evaluado delega responsabilidades de manera equilibrada y clara?"
+    ])
+    ws.append([
+        "Trabajo en Equipo",
+        "Capacidad de colaborar con otros para lograr metas comunes.",
+        1.2,
+        "¿El evaluado comparte información y conocimientos de forma abierta?"
+    ])
+
+    # Auto-fit column widths
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = openpyxl.utils.get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+    out = BytesIO()
+    wb.save(out)
+    out.seek(0)
+
+    filename = "modelo_competencias_preguntas.xlsx"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"'
+    }
+    return StreamingResponse(
+        out,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers
+    )
+
+
+@router.post("/{evaluation_id}/competencies/import")
+async def import_competencies_xlsx(
+    evaluation_id: UUID,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+
+    try:
+        content = await file.read()
+        wb = openpyxl.load_workbook(filename=BytesIO(content), data_only=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="El archivo no es un Excel XLSX válido")
+
+    ws = wb.active
+    if not ws:
+        raise HTTPException(status_code=400, detail="La hoja de cálculo está vacía")
+
+    competencies_created = 0
+    questions_created = 0
+    questions_skipped = 0
+
+    # Determine max position of current questions
+    max_position = db.scalar(
+        select(func.max(Question.position))
+        .where(
+            Question.company_id == current_user.company_id,
+            Question.evaluation_id == evaluation_id,
+        )
+    ) or 0
+
+    local_competency_cache = {}
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row or not row[0]:
+            continue
+        
+        comp_name = str(row[0]).strip()
+        if not comp_name:
+            continue
+
+        comp_desc = str(row[1]).strip() if row[1] is not None else None
+        
+        try:
+            comp_weight = float(row[2]) if row[2] is not None else 1.0
+        except (ValueError, TypeError):
+            comp_weight = 1.0
+
+        question_text = str(row[3]).strip() if row[3] is not None else None
+
+        competency = local_competency_cache.get(comp_name)
+        if not competency:
+            competency = db.scalar(
+                select(Competency).where(
+                    Competency.company_id == current_user.company_id,
+                    Competency.evaluation_id == evaluation_id,
+                    Competency.name == comp_name,
+                )
+            )
+
+        if not competency:
+            competency = Competency(
+                company_id=current_user.company_id,
+                evaluation_id=evaluation_id,
+                name=comp_name,
+                description=comp_desc,
+                weight=comp_weight,
+            )
+            db.add(competency)
+            db.flush()
+            competencies_created += 1
+            local_competency_cache[comp_name] = competency
+        
+        if question_text:
+            question_exists = db.scalar(
+                select(Question).where(
+                    Question.company_id == current_user.company_id,
+                    Question.evaluation_id == evaluation_id,
+                    Question.competency_id == competency.id,
+                    Question.text == question_text,
+                )
+            )
+            if question_exists:
+                questions_skipped += 1
+                continue
+
+            max_position += 1
+            new_question = Question(
+                company_id=current_user.company_id,
+                evaluation_id=evaluation_id,
+                competency_id=competency.id,
+                text=question_text,
+                position=max_position,
+            )
+            db.add(new_question)
+            questions_created += 1
+
+    db.commit()
+
+    return {
+        "competencies_created": competencies_created,
+        "questions_created": questions_created,
+        "questions_skipped": questions_skipped,
+    }

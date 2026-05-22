@@ -17,6 +17,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   api,
+  API_URL,
   Assignment,
   Competency,
   Evaluation,
@@ -214,6 +215,50 @@ export default function EvaluationDetail() {
     }
   }
 
+  async function handleExcelUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !token) return;
+
+    setLoading(true);
+    setMessage("");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(`${API_URL}/evaluations/${evaluationId}/competencies/import`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMsg = "Error al importar el archivo";
+        try {
+          const errData = await response.json();
+          errorMsg = errData.detail || errorMsg;
+        } catch {
+          // Ignore
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      setMessage(
+        `Importación completa: se crearon ${result.competencies_created} competencias y ${result.questions_created} preguntas (${result.questions_skipped} preguntas duplicadas omitidas).`
+      );
+      
+      event.target.value = "";
+      await refreshAll(token);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Error al importar Excel");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function updateCompetency(event: FormEvent<HTMLFormElement>, competencyId: string) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -328,7 +373,32 @@ export default function EvaluationDetail() {
 
         <div className="grid two">
           <section className="panel">
-            <h2>Competencias</h2>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2>Competencias</h2>
+              <div className="toolbar" style={{ gap: 8 }}>
+                <a
+                  className="button secondary"
+                  href={`${API_URL}/evaluations/${evaluationId}/competencies/import-template`}
+                  download
+                  style={{ fontSize: "0.8rem", padding: "6px 10px" }}
+                >
+                  Descargar Plantilla
+                </a>
+                <label
+                  className="button secondary"
+                  style={{ fontSize: "0.8rem", padding: "6px 10px", cursor: "pointer", margin: 0 }}
+                >
+                  Importar Excel
+                  <input
+                    type="file"
+                    accept=".xlsx"
+                    style={{ display: "none" }}
+                    onChange={handleExcelUpload}
+                    disabled={loading}
+                  />
+                </label>
+              </div>
+            </div>
             <form className="form" onSubmit={addCompetency} style={{ marginTop: 14 }}>
               <div className="field">
                 <label>Nombre</label>
