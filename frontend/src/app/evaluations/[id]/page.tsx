@@ -215,6 +215,35 @@ export default function EvaluationDetail() {
     }
   }
 
+  async function handleDownloadTemplate() {
+    if (!token) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${API_URL}/evaluations/${evaluationId}/competencies/import-template`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error("No se pudo descargar la plantilla");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "plantilla_competencias.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Error al descargar plantilla");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleExcelUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file || !token) return;
@@ -376,14 +405,15 @@ export default function EvaluationDetail() {
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <h2>Competencias</h2>
               <div className="toolbar" style={{ gap: 8 }}>
-                <a
+                <button
+                  type="button"
                   className="button secondary"
-                  href={`${API_URL}/evaluations/${evaluationId}/competencies/import-template`}
-                  download
+                  onClick={handleDownloadTemplate}
+                  disabled={loading}
                   style={{ fontSize: "0.8rem", padding: "6px 10px" }}
                 >
                   Descargar Plantilla
-                </a>
+                </button>
                 <label
                   className="button secondary"
                   style={{ fontSize: "0.8rem", padding: "6px 10px", cursor: "pointer", margin: 0 }}
