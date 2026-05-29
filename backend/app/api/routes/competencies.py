@@ -131,6 +131,9 @@ def create_question(
         competency_id=payload.competency_id,
         text=payload.text,
         position=payload.position,
+        question_type=payload.question_type,
+        options=payload.options,
+        is_evaluative=payload.is_evaluative,
     )
     db.add(question)
     db.commit()
@@ -223,7 +226,15 @@ def download_import_template(
     ws.title = "Competencias y Preguntas"
 
     # Set headers
-    headers = ["Competencia", "Descripción de la Competencia", "Peso", "Pregunta"]
+    headers = [
+        "Competencia", 
+        "Descripción de la Competencia", 
+        "Peso", 
+        "Pregunta", 
+        "Tipo de Pregunta", 
+        "Opciones (separadas por coma)", 
+        "Evaluativa (SI/NO)"
+    ]
     ws.append(headers)
 
     # Example rows
@@ -231,19 +242,37 @@ def download_import_template(
         "Liderazgo",
         "Habilidad para dirigir, coordinar e impulsar al equipo.",
         1.0,
-        "¿El evaluado demuestra iniciativa para liderar nuevos proyectos?"
+        "¿El evaluado demuestra iniciativa para liderar nuevos proyectos?",
+        "numeric_1_10",
+        "",
+        "SI"
     ])
     ws.append([
         "Liderazgo",
         "Habilidad para dirigir, coordinar e impulsar al equipo.",
         1.0,
-        "¿El evaluado delega responsabilidades de manera equilibrada y clara?"
+        "¿El evaluado delega responsabilidades de manera equilibrada y clara?",
+        "likert",
+        "Muy en desacuerdo, En desacuerdo, Neutral, De acuerdo, Muy de acuerdo",
+        "SI"
     ])
     ws.append([
         "Trabajo en Equipo",
         "Capacidad de colaborar con otros para lograr metas comunes.",
         1.2,
-        "¿El evaluado comparte información y conocimientos de forma abierta?"
+        "¿El evaluado comparte información y conocimientos de forma abierta?",
+        "dicotomic",
+        "Sí, No",
+        "SI"
+    ])
+    ws.append([
+        "Trabajo en Equipo",
+        "Capacidad de colaborar con otros para lograr metas comunes.",
+        1.2,
+        "¿Qué áreas de mejora técnica sugerirías para el evaluado?",
+        "checklist",
+        "Puntualidad, Comunicación, Calidad técnica, Organización",
+        "NO"
     ])
 
     # Auto-fit column widths
@@ -304,13 +333,13 @@ async def import_competencies_xlsx(
     for row in ws.iter_rows(min_row=2, values_only=True):
         if not row or not row[0]:
             continue
-        
+
         comp_name = str(row[0]).strip()
         if not comp_name:
             continue
 
         comp_desc = str(row[1]).strip() if row[1] is not None else None
-        
+
         try:
             comp_weight = float(row[2]) if row[2] is not None else 1.0
         except (ValueError, TypeError):
@@ -340,7 +369,7 @@ async def import_competencies_xlsx(
             db.flush()
             competencies_created += 1
             local_competency_cache[comp_name] = competency
-        
+
         if question_text:
             question_exists = db.scalar(
                 select(Question).where(
@@ -354,6 +383,32 @@ async def import_competencies_xlsx(
                 questions_skipped += 1
                 continue
 
+            # Parsing new columns
+            question_type = "numeric_1_10"
+            options = None
+            is_evaluative = True
+
+            if len(row) > 4 and row[4] is not None:
+                question_type = str(row[4]).strip().lower()
+            if len(row) > 5 and row[5] is not None:
+                raw_opts = str(row[5]).strip()
+                if raw_opts:
+                    if question_type == "semantic_differential":
+                        parts = [p.strip() for p in raw_opts.split("-") if p.strip()]
+                        if len(parts) == 2:
+                            options = {"left_label": parts[0], "right_label": parts[1], "steps": 7}
+                        else:
+                            parts = [p.strip() for p in raw_opts.split(",") if p.strip()]
+                            if len(parts) == 2:
+                                options = {"left_label": parts[0], "right_label": parts[1], "steps": 7}
+                            else:
+                                options = [p.strip() for p in raw_opts.split(",") if p.strip()]
+                    else:
+                        options = [p.strip() for p in raw_opts.split(",") if p.strip()]
+
+            if len(row) > 6 and row[6] is not None:
+                is_evaluative = str(row[6]).strip().upper() in ("SI", "YES", "TRUE", "1")
+
             max_position += 1
             new_question = Question(
                 company_id=current_user.company_id,
@@ -361,6 +416,9 @@ async def import_competencies_xlsx(
                 competency_id=competency.id,
                 text=question_text,
                 position=max_position,
+                question_type=question_type,
+                options=options,
+                is_evaluative=is_evaluative,
             )
             db.add(new_question)
             questions_created += 1

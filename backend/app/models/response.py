@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID as PyUUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,7 +26,6 @@ class SurveyToken(Base):
 class Response(Base):
     __tablename__ = "responses"
     __table_args__ = (
-        CheckConstraint("score BETWEEN 1 AND 10"),
         UniqueConstraint("company_id", "assignment_id", "question_id"),
     )
 
@@ -35,7 +34,9 @@ class Response(Base):
     evaluation_id: Mapped[PyUUID] = mapped_column(ForeignKey("evaluations.id"), nullable=False)
     assignment_id: Mapped[PyUUID] = mapped_column(ForeignKey("evaluator_assignments.id"), nullable=False)
     question_id: Mapped[PyUUID] = mapped_column(ForeignKey("questions.id"), nullable=False)
-    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    selected_option: Mapped[str | None] = mapped_column(String(200), default=None, nullable=True)
+    selected_options: Mapped[list | None] = mapped_column(JSON, default=None, nullable=True)
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

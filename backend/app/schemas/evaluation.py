@@ -50,12 +50,18 @@ class QuestionCreate(BaseModel):
     competency_id: UUID
     text: str = Field(min_length=5)
     position: int = 0
+    question_type: str = "numeric_1_10"
+    options: list | dict | None = None
+    is_evaluative: bool = True
 
 
 class QuestionUpdate(BaseModel):
     competency_id: UUID | None = None
     text: str | None = Field(default=None, min_length=5)
     position: int | None = None
+    question_type: str | None = None
+    options: list | dict | None = None
+    is_evaluative: bool | None = None
 
 
 class QuestionRead(BaseModel):
@@ -64,5 +70,8 @@ class QuestionRead(BaseModel):
     competency_id: UUID
     text: str
     position: int
+    question_type: str
+    options: list | dict | None
+    is_evaluative: bool
 
     model_config = {"from_attributes": True}

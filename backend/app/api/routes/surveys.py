@@ -63,7 +63,14 @@ def get_public_survey(token: str, db: Session = Depends(get_db)) -> PublicSurvey
         evaluatee_name=evaluatee.full_name,
         evaluator_name=evaluator.full_name,
         questions=[
-            SurveyQuestion(id=question.id, text=question.text, competency=competency.name)
+            SurveyQuestion(
+                id=question.id,
+                text=question.text,
+                competency=competency.name,
+                question_type=question.question_type,
+                options=question.options,
+                is_evaluative=question.is_evaluative
+            )
             for question, competency in questions
         ],
     )
@@ -103,6 +110,8 @@ def submit_public_survey(
         )
         if existing:
             existing.score = item.score
+            existing.selected_option = item.selected_option
+            existing.selected_options = item.selected_options
             existing.comment = item.comment
         else:
             db.add(
@@ -112,6 +121,8 @@ def submit_public_survey(
                     assignment_id=survey_token.assignment_id,
                     question_id=item.question_id,
                     score=item.score,
+                    selected_option=item.selected_option,
+                    selected_options=item.selected_options,
                     comment=item.comment,
                 )
             )

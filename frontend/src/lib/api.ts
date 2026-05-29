@@ -25,6 +25,9 @@ export type Question = {
   competency_id: string;
   text: string;
   position: number;
+  question_type: string;
+  options: any;
+  is_evaluative: boolean;
 };
 
 export type Participant = {
@@ -41,6 +44,19 @@ export type Assignment = {
   evaluator_id: string;
   relationship: string;
   weight: string;
+};
+
+export type QuestionResult = {
+  question_id: string;
+  question_text: string;
+  question_type: string;
+  is_evaluative: boolean;
+  competency_name: string;
+  average: number | null;
+  median: number | null;
+  stddev: number | null;
+  responses_count: number;
+  distribution: Record<string, number>;
 };
 
 export type EvaluationResults = {
@@ -63,13 +79,21 @@ export type EvaluationResults = {
     average: number;
     rank: number;
   }>;
+  questions: Array<QuestionResult>;
 };
 
 export type PublicSurvey = {
   evaluation_title: string;
   evaluatee_name: string;
   evaluator_name: string;
-  questions: Array<{ id: string; text: string; competency: string }>;
+  questions: Array<{
+    id: string;
+    text: string;
+    competency: string;
+    question_type: string;
+    options: any;
+    is_evaluative: boolean;
+  }>;
 };
 
 export class ApiError extends Error {

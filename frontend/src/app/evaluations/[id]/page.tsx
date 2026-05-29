@@ -124,10 +124,29 @@ export default function EvaluationDetail() {
 
   async function addQuestion(event: FormEvent<HTMLFormElement>) {
     const data = new FormData(event.currentTarget);
+    const qType = String(data.get("question_type") || "numeric_1_10");
+    const rawOpts = String(data.get("options_raw") || "");
+    const isEvaluative = data.get("is_evaluative") === "true";
+
+    let parsedOptions: any = null;
+    if (qType === "semantic_differential") {
+      const parts = rawOpts.split(/[-,\r\n]+/).map(p => p.trim()).filter(Boolean);
+      if (parts.length === 2) {
+        parsedOptions = { left_label: parts[0], right_label: parts[1], steps: 7 };
+      } else {
+        parsedOptions = { left_label: "Muy malo", right_label: "Muy bueno", steps: 7 };
+      }
+    } else if (qType !== "numeric_1_10" && qType !== "nps" && qType !== "dicotomic" && rawOpts) {
+      parsedOptions = rawOpts.split(",").map(o => o.trim()).filter(Boolean);
+    }
+
     await postForm<Question>(`/evaluations/${evaluationId}/questions`, event, {
       competency_id: data.get("competency_id"),
       text: data.get("text"),
       position: Number(data.get("position") || questions.length + 1),
+      question_type: qType,
+      options: parsedOptions,
+      is_evaluative: isEvaluative,
     });
   }
 
@@ -314,12 +333,31 @@ export default function EvaluationDetail() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const qType = String(data.get("question_type") || "numeric_1_10");
+    const rawOpts = String(data.get("options_raw") || "");
+    const isEvaluative = data.get("is_evaluative") === "true";
+
+    let parsedOptions: any = null;
+    if (qType === "semantic_differential") {
+      const parts = rawOpts.split(/[-,\r\n]+/).map(p => p.trim()).filter(Boolean);
+      if (parts.length === 2) {
+        parsedOptions = { left_label: parts[0], right_label: parts[1], steps: 7 };
+      } else {
+        parsedOptions = { left_label: "Muy malo", right_label: "Muy bueno", steps: 7 };
+      }
+    } else if (qType !== "numeric_1_10" && qType !== "nps" && qType !== "dicotomic" && rawOpts) {
+      parsedOptions = rawOpts.split(",").map(o => o.trim()).filter(Boolean);
+    }
+
     const updated = await patchResource<Question>(
       `/evaluations/${evaluationId}/questions/${questionId}`,
       {
         competency_id: data.get("competency_id"),
         text: data.get("text"),
         position: Number(data.get("position") || 0),
+        question_type: qType,
+        options: parsedOptions,
+        is_evaluative: isEvaluative,
       },
     );
     if (updated) setEditingQuestionId(null);
@@ -535,27 +573,101 @@ export default function EvaluationDetail() {
                   <label>Pregunta</label>
                   <textarea className="textarea" name="text" required />
                 </div>
+                <div className="field">
+                  <label>Tipo de Pregunta</label>
+                  <select className="select" defaultValue="numeric_1_10" name="question_type" required>
+                    <option value="numeric_1_10">Escala Numérica (1-10)</option>
+                    <option value="nps">NPS (Net Promoter Score 0-10)</option>
+                    <option value="dicotomic">Dicotómica (Sí/No)</option>
+                    <option value="likert">Escala Likert (5 opciones estándar)</option>
+                    <option value="single_choice">Opción Múltiple (Única)</option>
+                    <option value="multiple_choice">Opción Múltiple (Múltiple)</option>
+                    <option value="semantic_differential">Diferencial Semántico (Malo - Bueno)</option>
+                    <option value="ranking">Ordenamiento / Ranking</option>
+                    <option value="checklist">Checklist (Lista verificación)</option>
+                    <option value="frequency">Frecuencia (Nunca, A veces...)</option>
+                    <option value="categorization">Categorización (Rango etario...)</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Opciones (separadas por coma; ej: Aceptable, Bueno, Excelente. Para diferencial: "Malo - Bueno")</label>
+                  <input className="input" name="options_raw" placeholder="Opción A, Opción B, Opción C" />
+                </div>
+                <div className="field" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
+                  <select className="select" defaultValue="true" name="is_evaluative" style={{ width: "auto", minHeight: 34, padding: "4px 8px" }}>
+                    <option value="true">Sí (Evaluativa - suma al promedio de competencia)</option>
+                    <option value="false">No (Informativa / Cualitativa únicamente)</option>
+                  </select>
+                </div>
                 <input name="position" type="hidden" value={questions.length + 1} />
-                <button className="button" disabled={loading || !competencies.length} type="submit">
+                <button className="button" disabled={loading || !competencies.length} type="submit" style={{ marginTop: 8 }}>
                   <Plus size={16} />
-                  Agregar
+                  Agregar Pregunta
                 </button>
               </form>
               <div className="list">
                 {questions.map((question) => (
-                  <div className="item" key={question.id}>
+                  <div className="item" key={question.id} style={{ display: "block" }}>
                     {editingQuestionId === question.id ? (
                       <form className="form" onSubmit={(event) => updateQuestion(event, question.id)}>
-                        <select className="select" defaultValue={question.competency_id} name="competency_id" required>
-                          {competencies.map((competency) => (
-                            <option key={competency.id} value={competency.id}>
-                              {competency.name}
-                            </option>
-                          ))}
-                        </select>
-                        <textarea className="textarea" defaultValue={question.text} name="text" required />
-                        <input className="input" defaultValue={question.position} name="position" type="number" />
-                        <div className="toolbar">
+                        <div className="field">
+                          <label>Competencia</label>
+                          <select className="select" defaultValue={question.competency_id} name="competency_id" required>
+                            {competencies.map((competency) => (
+                              <option key={competency.id} value={competency.id}>
+                                {competency.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="field">
+                          <label>Pregunta</label>
+                          <textarea className="textarea" defaultValue={question.text} name="text" required />
+                        </div>
+                        <div className="field">
+                          <label>Tipo</label>
+                          <select className="select" defaultValue={question.question_type || "numeric_1_10"} name="question_type" required>
+                            <option value="numeric_1_10">Escala Numérica (1-10)</option>
+                            <option value="nps">NPS (Net Promoter Score 0-10)</option>
+                            <option value="dicotomic">Dicotómica (Sí/No)</option>
+                            <option value="likert">Escala Likert (5 opciones estándar)</option>
+                            <option value="single_choice">Opción Múltiple (Única)</option>
+                            <option value="multiple_choice">Opción Múltiple (Múltiple)</option>
+                            <option value="semantic_differential">Diferencial Semántico (Malo - Bueno)</option>
+                            <option value="ranking">Ordenamiento / Ranking</option>
+                            <option value="checklist">Checklist (Lista verificación)</option>
+                            <option value="frequency">Frecuencia (Nunca, A veces...)</option>
+                            <option value="categorization">Categorización (Rango etario...)</option>
+                          </select>
+                        </div>
+                        <div className="field">
+                          <label>Opciones (separadas por coma)</label>
+                          <input
+                            className="input"
+                            defaultValue={
+                              question.options
+                                ? Array.isArray(question.options)
+                                  ? question.options.join(", ")
+                                  : typeof question.options === "object"
+                                  ? `${question.options.left_label} - ${question.options.right_label}`
+                                  : String(question.options)
+                                : ""
+                            }
+                            name="options_raw"
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Uso Estadístico</label>
+                          <select className="select" defaultValue={String(question.is_evaluative ?? true)} name="is_evaluative">
+                            <option value="true">Sí (Evaluativa - suma al promedio)</option>
+                            <option value="false">No (Informativa - no suma al promedio)</option>
+                          </select>
+                        </div>
+                        <div className="field">
+                          <label>Posición</label>
+                          <input className="input" defaultValue={question.position} name="position" type="number" />
+                        </div>
+                        <div className="toolbar" style={{ marginTop: 12 }}>
                           <button className="button" disabled={loading} type="submit">
                             <Save size={16} />
                             Guardar
@@ -569,18 +681,38 @@ export default function EvaluationDetail() {
                     ) : (
                       <>
                         <strong>{question.text}</strong>
-                        <span className="muted">Posicion {question.position}</span>
-                        <div className="toolbar">
-                          <button className="button secondary" onClick={() => setEditingQuestionId(question.id)} type="button">
-                            <Pencil size={16} />
+                        <div className="row" style={{ marginTop: 6, gap: 8, justifyContent: "flex-start", flexWrap: "wrap" }}>
+                          <span className="status-pill" style={{ fontSize: "0.75rem", padding: "2px 6px" }}>{question.question_type || "numeric_1_10"}</span>
+                          {question.is_evaluative ? (
+                            <span className="status-pill" style={{ fontSize: "0.75rem", padding: "2px 6px", background: "var(--accent-soft)", color: "var(--accent-dark)", border: "1px solid #b8ddd6" }}>Evaluativa</span>
+                          ) : (
+                            <span className="status-pill" style={{ fontSize: "0.75rem", padding: "2px 6px", background: "#edf1f6", color: "#263244", border: "1px solid var(--line)" }}>Informativa</span>
+                          )}
+                          <span className="muted" style={{ fontSize: "0.8rem" }}>Posición: {question.position}</span>
+                        </div>
+                        {question.options && (
+                          <span className="muted" style={{ display: "block", fontSize: "0.8rem", marginTop: 6, background: "rgba(0,0,0,0.02)", padding: "4px 8px", borderRadius: 4 }}>
+                            Opciones: {
+                              Array.isArray(question.options)
+                                ? question.options.join(", ")
+                                : typeof question.options === "object"
+                                ? `${question.options.left_label} ↔ ${question.options.right_label} (${question.options.steps || 7} pasos)`
+                                : JSON.stringify(question.options)
+                            }
+                          </span>
+                        )}
+                        <div className="toolbar" style={{ marginTop: 10 }}>
+                          <button className="button secondary" onClick={() => setEditingQuestionId(question.id)} type="button" style={{ minHeight: 32, height: 32, padding: "4px 10px", fontSize: "0.8rem" }}>
+                            <Pencil size={12} />
                             Editar
                           </button>
                           <button
                             className="button danger"
                             onClick={() => deleteResource(`/evaluations/${evaluationId}/questions/${question.id}`, "pregunta")}
                             type="button"
+                            style={{ minHeight: 32, height: 32, padding: "4px 10px", fontSize: "0.8rem" }}
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={12} />
                             Borrar
                           </button>
                         </div>
@@ -730,26 +862,121 @@ export default function EvaluationDetail() {
               </section>
             </div>
 
+            <div className="grid two" style={{ marginTop: 18 }}>
+              <section className="panel">
+                <h2>Promedios por Competencia</h2>
+                <div className="list">
+                  {results?.competencies.map((competency) => (
+                    <div className="item" key={competency.competency_id}>
+                      <div className="row">
+                        <strong>{competency.competency_name}</strong>
+                        <span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-dark)" }}>Promedio: {competency.average}</span>
+                      </div>
+                      <span className="muted" style={{ fontSize: "0.85rem" }}>
+                        Mediana: {competency.median} | Desvío: {competency.stddev} | Respuestas: {competency.responses}
+                      </span>
+                    </div>
+                  ))}
+                  {!results?.competencies.length && <p className="muted">No hay respuestas cargadas aún.</p>}
+                </div>
+              </section>
+
+              <section className="panel">
+                <h2>Ranking de Participantes</h2>
+                <div className="list">
+                  {results?.ranking.map((row) => (
+                    <div className="item" key={row.participant_id}>
+                      <div className="row">
+                        <strong>
+                          #{row.rank} {row.participant_name}
+                        </strong>
+                        <span className="status-pill" style={{ background: "var(--accent)", color: "#fff" }}>Score: {row.average}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {!results?.ranking.length && <p className="muted">No hay rankings disponibles.</p>}
+                </div>
+              </section>
+            </div>
+
             <section className="panel" style={{ marginTop: 18 }}>
-              <h2>Resultados</h2>
+              <h2>Desglose Estadístico por Pregunta</h2>
               <div className="list">
-                {results?.competencies.map((competency) => (
-                  <div className="item" key={competency.competency_id}>
-                    <strong>{competency.competency_name}</strong>
-                    <span className="muted">
-                      Promedio {competency.average} | Mediana {competency.median} | Desvio {competency.stddev}
-                    </span>
-                  </div>
-                ))}
-                {results?.ranking.map((row) => (
-                  <div className="item" key={row.participant_id}>
-                    <strong>
-                      #{row.rank} {row.participant_name}
-                    </strong>
-                    <span className="muted">Promedio {row.average}</span>
-                  </div>
-                ))}
-                {!results?.competencies.length && <p className="muted">Todavia no hay respuestas.</p>}
+                {results?.questions?.map((q) => {
+                  const distributionEntries = Object.entries(q.distribution || {});
+                  const totalAnswers = distributionEntries.reduce((a, b) => a + b[1], 0);
+                  
+                  // Calculate NPS score if question type is nps
+                  let npsScore: number | null = null;
+                  if (q.question_type === "nps" && totalAnswers > 0) {
+                    const promoters = q.distribution["Promotores (9-10)"] || 0;
+                    const detractors = q.distribution["Detractores (0-6)"] || 0;
+                    npsScore = Math.round(((promoters - detractors) / totalAnswers) * 100);
+                  }
+
+                  return (
+                    <div className="item" key={q.question_id} style={{ display: "block" }}>
+                      <div className="row" style={{ alignItems: "flex-start", marginBottom: 8 }}>
+                        <div>
+                          <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px" }}>{q.competency_name}</span>
+                          <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px" }}>{q.question_type}</span>
+                          {q.is_evaluative ? (
+                            <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px", background: "var(--accent-soft)", color: "var(--accent-dark)", border: "1px solid #b8ddd6" }}>Evaluativa</span>
+                          ) : (
+                            <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px", background: "#edf1f6", color: "#263244" }}>Informativa</span>
+                          )}
+                          <h4 style={{ marginTop: 8, fontSize: "1.05rem", fontWeight: 700 }}>{q.question_text}</h4>
+                        </div>
+                        {q.is_evaluative && q.average !== null && (
+                          <div style={{ textAlign: "right", minWidth: 80 }}>
+                            <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: "var(--accent-dark)" }}>
+                              {q.average}
+                            </div>
+                            <span className="muted" style={{ fontSize: "0.75rem" }}>Promedio</span>
+                          </div>
+                        )}
+                        {q.question_type === "nps" && npsScore !== null && (
+                          <div style={{ textAlign: "right", minWidth: 80, marginLeft: 12 }}>
+                            <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: npsScore >= 30 ? "var(--accent)" : npsScore >= 0 ? "orange" : "var(--danger)" }}>
+                              {npsScore > 0 ? `+${npsScore}` : npsScore}
+                            </div>
+                            <span className="muted" style={{ fontSize: "0.75rem" }}>NPS Score</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {q.is_evaluative && q.average !== null && (
+                        <p className="muted" style={{ fontSize: "0.8rem", marginBottom: 12 }}>
+                          Mediana: {q.median} | Desvío: {q.stddev} | Respuestas: {q.responses_count}
+                        </p>
+                      )}
+
+                      <div style={{ marginTop: 12, background: "rgba(0,0,0,0.012)", padding: 12, borderRadius: 6, border: "1px solid var(--line)" }}>
+                        <span className="muted" style={{ fontSize: "0.75rem", display: "block", marginBottom: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                          Distribución de Respuestas ({totalAnswers} en total):
+                        </span>
+                        {distributionEntries.map(([opt, count]) => {
+                          const percentage = totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0;
+                          return (
+                            <div key={opt} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                              <span style={{ width: 160, fontSize: "0.8rem", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={opt}>
+                                {opt}
+                              </span>
+                              <div style={{ flex: 1, height: 12, background: "rgba(0,0,0,0.05)", borderRadius: 6, overflow: "hidden" }}>
+                                <div style={{ width: `${percentage}%`, height: "100%", background: "var(--accent)", borderRadius: 6, transition: "width 0.4s ease" }} />
+                              </div>
+                              <span style={{ width: 90, fontSize: "0.8rem", fontWeight: "bold", textAlign: "right" }}>
+                                {percentage}% ({count})
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {totalAnswers === 0 && <p className="muted" style={{ fontSize: "0.8rem" }}>Sin respuestas registradas.</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!results?.questions?.length && <p className="muted">No hay estadísticas de preguntas cargadas.</p>}
               </div>
             </section>
           </>

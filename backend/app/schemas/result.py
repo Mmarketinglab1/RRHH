@@ -20,6 +20,19 @@ class ParticipantRanking(BaseModel):
     rank: int
 
 
+class QuestionResult(BaseModel):
+    question_id: UUID
+    question_text: str
+    question_type: str
+    is_evaluative: bool
+    competency_name: str
+    average: float | None = None
+    median: float | None = None
+    stddev: float | None = None
+    responses_count: int
+    distribution: dict[str, int]
+
+
 class EvaluationResults(BaseModel):
     evaluation_id: UUID
     average: float
@@ -27,3 +40,4 @@ class EvaluationResults(BaseModel):
     stddev: float
     competencies: list[CompetencyResult]
     ranking: list[ParticipantRanking]
+    questions: list[QuestionResult] = []
