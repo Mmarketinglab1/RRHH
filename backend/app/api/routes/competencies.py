@@ -126,11 +126,18 @@ def create_question(
     if not competency or competency.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Competency not found")
 
+    tag_s = payload.tag_self or f"P{payload.position or 1} Autoevaluado"
+    tag_e = payload.tag_evaluator or f"P{payload.position or 1}B Evaluador"
+
     question = Question(
         company_id=current_user.company_id,
         evaluation_id=evaluation_id,
         competency_id=payload.competency_id,
         text=payload.text,
+        text_self=payload.text_self or payload.text,
+        text_evaluator=payload.text_evaluator or payload.text,
+        tag_self=tag_s,
+        tag_evaluator=tag_e,
         position=payload.position,
         question_type=payload.question_type,
         options=payload.options,
@@ -150,6 +157,10 @@ def create_question(
                 company_id=current_user.company_id,
                 competency_name=competency.name,
                 text=payload.text,
+                text_self=payload.text_self or payload.text,
+                text_evaluator=payload.text_evaluator or payload.text,
+                tag_self=tag_s,
+                tag_evaluator=tag_e,
                 question_type=payload.question_type,
                 options=payload.options,
                 is_evaluative=payload.is_evaluative

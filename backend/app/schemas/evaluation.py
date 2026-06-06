@@ -49,6 +49,10 @@ class CompetencyRead(BaseModel):
 class QuestionCreate(BaseModel):
     competency_id: UUID
     text: str = Field(min_length=5)
+    text_self: str | None = None
+    text_evaluator: str | None = None
+    tag_self: str | None = None
+    tag_evaluator: str | None = None
     position: int = 0
     question_type: str = "numeric_1_10"
     options: list | dict | None = None
@@ -59,6 +63,10 @@ class QuestionCreate(BaseModel):
 class QuestionUpdate(BaseModel):
     competency_id: UUID | None = None
     text: str | None = Field(default=None, min_length=5)
+    text_self: str | None = None
+    text_evaluator: str | None = None
+    tag_self: str | None = None
+    tag_evaluator: str | None = None
     position: int | None = None
     question_type: str | None = None
     options: list | dict | None = None
@@ -70,6 +78,10 @@ class QuestionRead(BaseModel):
     evaluation_id: UUID
     competency_id: UUID
     text: str
+    text_self: str | None = None
+    text_evaluator: str | None = None
+    tag_self: str | None = None
+    tag_evaluator: str | None = None
     position: int
     question_type: str
     options: list | dict | None
@@ -83,6 +95,10 @@ class QuestionBankRead(BaseModel):
     company_id: UUID | None
     competency_name: str
     text: str
+    text_self: str | None = None
+    text_evaluator: str | None = None
+    tag_self: str | None = None
+    tag_evaluator: str | None = None
     question_type: str
     options: list | dict | None
     is_evaluative: bool

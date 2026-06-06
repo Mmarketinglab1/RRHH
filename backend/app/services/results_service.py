@@ -124,6 +124,10 @@ def calculate_evaluation_results(
 
             by_question[question.id] = {
                 "text": question.text,
+                "text_self": question.text_self or question.text,
+                "text_evaluator": question.text_evaluator or question.text,
+                "tag_self": question.tag_self,
+                "tag_evaluator": question.tag_evaluator,
                 "type": question.question_type,
                 "is_evaluative": question.is_evaluative,
                 "competency_name": competency.name,
@@ -233,6 +237,10 @@ def calculate_evaluation_results(
         QuestionResult(
             question_id=q_id,
             question_text=data["text"],
+            question_text_self=data["text_self"],
+            question_text_evaluator=data["text_evaluator"],
+            tag_self=data["tag_self"],
+            tag_evaluator=data["tag_evaluator"],
             question_type=data["type"],
             is_evaluative=data["is_evaluative"],
             competency_name=data["competency_name"],

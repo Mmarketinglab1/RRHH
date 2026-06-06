@@ -24,6 +24,10 @@ export type Question = {
   evaluation_id: string;
   competency_id: string;
   text: string;
+  text_self?: string;
+  text_evaluator?: string;
+  tag_self?: string;
+  tag_evaluator?: string;
   position: number;
   question_type: string;
   options: any;
@@ -49,6 +53,10 @@ export type Assignment = {
 export type QuestionResult = {
   question_id: string;
   question_text: string;
+  question_text_self?: string;
+  question_text_evaluator?: string;
+  tag_self?: string;
+  tag_evaluator?: string;
   question_type: string;
   is_evaluative: boolean;
   competency_name: string;
@@ -90,6 +98,10 @@ export type PublicSurvey = {
   questions: Array<{
     id: string;
     text: string;
+    text_self?: string;
+    text_evaluator?: string;
+    tag_self?: string;
+    tag_evaluator?: string;
     competency: string;
     question_type: string;
     options: any;

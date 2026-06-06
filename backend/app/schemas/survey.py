@@ -12,6 +12,10 @@ class SurveyTokenRead(BaseModel):
 class SurveyQuestion(BaseModel):
     id: UUID
     text: str
+    text_self: str | None = None
+    text_evaluator: str | None = None
+    tag_self: str | None = None
+    tag_evaluator: str | None = None
     competency: str
     question_type: str
     options: list | dict | None = None

@@ -335,8 +335,19 @@ export default function SurveyPage() {
           <form className="form" onSubmit={submitSurvey}>
             {survey.questions.map((question) => (
               <section className="panel survey-card" key={question.id}>
-                <span className="status-pill">{question.competency}</span>
-                <h3 style={{ marginTop: 12 }}>{question.text}</h3>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span className="status-pill">{question.competency}</span>
+                  {survey.relationship === "self" ? (
+                    question.tag_self && <span className="status-pill" style={{ background: "rgba(0,0,0,0.05)", color: "var(--accent-dark)", border: "1px solid var(--line)" }}>{question.tag_self}</span>
+                  ) : (
+                    question.tag_evaluator && <span className="status-pill" style={{ background: "rgba(0,0,0,0.05)", color: "var(--accent-dark)", border: "1px solid var(--line)" }}>{question.tag_evaluator}</span>
+                  )}
+                </div>
+                <h3 style={{ marginTop: 12 }}>
+                  {survey.relationship === "self"
+                    ? question.text_self || question.text
+                    : question.text_evaluator || question.text}
+                </h3>
                 
                 {renderQuestionInput(question)}
 

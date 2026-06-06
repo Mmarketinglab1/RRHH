@@ -67,6 +67,10 @@ def get_public_survey(token: str, db: Session = Depends(get_db)) -> PublicSurvey
             SurveyQuestion(
                 id=question.id,
                 text=question.text,
+                text_self=question.text_self or question.text,
+                text_evaluator=question.text_evaluator or question.text,
+                tag_self=question.tag_self,
+                tag_evaluator=question.tag_evaluator,
                 competency=competency.name,
                 question_type=question.question_type,
                 options=question.options,

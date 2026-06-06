@@ -23,6 +23,10 @@ class ParticipantRanking(BaseModel):
 class QuestionResult(BaseModel):
     question_id: UUID
     question_text: str
+    question_text_self: str | None = None
+    question_text_evaluator: str | None = None
+    tag_self: str | None = None
+    tag_evaluator: str | None = None
     question_type: str
     is_evaluative: bool
     competency_name: str

@@ -162,6 +162,7 @@ export default function EvaluationDetail() {
     const isEvaluative = data.get("is_evaluative") === "true";
     const saveToBank = data.get("save_to_bank") === "true";
     const competencyId = String(data.get("competency_id") || "");
+    const textSelf = String(data.get("text_self") || "");
 
     let parsedOptions: any = null;
     if (qType === "semantic_differential") {
@@ -177,7 +178,11 @@ export default function EvaluationDetail() {
 
     const res = await postForm<Question>(`/evaluations/${evaluationId}/questions`, event, {
       competency_id: competencyId,
-      text: data.get("text"),
+      text: textSelf,
+      text_self: textSelf,
+      text_evaluator: String(data.get("text_evaluator") || textSelf),
+      tag_self: String(data.get("tag_self") || ""),
+      tag_evaluator: String(data.get("tag_evaluator") || ""),
       position: Number(data.get("position") || questions.length + 1),
       question_type: qType,
       options: parsedOptions,
@@ -476,6 +481,7 @@ export default function EvaluationDetail() {
     const qType = String(data.get("question_type") || "numeric_1_10");
     const rawOpts = String(data.get("options_raw") || "");
     const isEvaluative = data.get("is_evaluative") === "true";
+    const textSelf = String(data.get("text_self") || "");
 
     let parsedOptions: any = null;
     if (qType === "semantic_differential") {
@@ -493,7 +499,11 @@ export default function EvaluationDetail() {
       `/evaluations/${evaluationId}/questions/${questionId}`,
       {
         competency_id: data.get("competency_id"),
-        text: data.get("text"),
+        text: textSelf,
+        text_self: textSelf,
+        text_evaluator: String(data.get("text_evaluator") || textSelf),
+        tag_self: String(data.get("tag_self") || ""),
+        tag_evaluator: String(data.get("tag_evaluator") || ""),
         position: Number(data.get("position") || 0),
         question_type: qType,
         options: parsedOptions,
@@ -733,8 +743,20 @@ export default function EvaluationDetail() {
                   </select>
                 </div>
                 <div className="field">
-                  <label>Pregunta</label>
-                  <textarea className="textarea" name="text" required />
+                  <label>Pregunta (Autoevaluado / Evaluado)</label>
+                  <textarea className="textarea" name="text_self" placeholder="Ej: ¿Cómo reacciona ante una situación de crisis?" required />
+                </div>
+                <div className="field">
+                  <label>Etiqueta Autoevaluado</label>
+                  <input className="input" name="tag_self" placeholder="Ej: P1 Autoevaluado" />
+                </div>
+                <div className="field">
+                  <label>Pregunta (Evaluadores / Espejo)</label>
+                  <textarea className="textarea" name="text_evaluator" placeholder="Ej: ¿Cómo reacciona el colaborador ante una situación de crisis?" required />
+                </div>
+                <div className="field">
+                  <label>Etiqueta Evaluador</label>
+                  <input className="input" name="tag_evaluator" placeholder="Ej: P1B Evaluador" />
                 </div>
                 <div className="field">
                   <label>Tipo de Pregunta</label>
@@ -854,8 +876,20 @@ export default function EvaluationDetail() {
                           </select>
                         </div>
                         <div className="field">
-                          <label>Pregunta</label>
-                          <textarea className="textarea" defaultValue={question.text} name="text" required />
+                          <label>Pregunta (Autoevaluado)</label>
+                          <textarea className="textarea" defaultValue={question.text_self || question.text} name="text_self" required />
+                        </div>
+                        <div className="field">
+                          <label>Etiqueta Autoevaluado</label>
+                          <input className="input" defaultValue={question.tag_self || ""} name="tag_self" placeholder="Ej: P1 Autoevaluado" />
+                        </div>
+                        <div className="field">
+                          <label>Pregunta (Evaluador)</label>
+                          <textarea className="textarea" defaultValue={question.text_evaluator || question.text} name="text_evaluator" required />
+                        </div>
+                        <div className="field">
+                          <label>Etiqueta Evaluador</label>
+                          <input className="input" defaultValue={question.tag_evaluator || ""} name="tag_evaluator" placeholder="Ej: P1B Evaluador" />
                         </div>
                         <div className="field">
                           <label>Tipo</label>
@@ -913,7 +947,24 @@ export default function EvaluationDetail() {
                       </form>
                     ) : (
                       <>
-                        <strong>{question.text}</strong>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div>
+                            {question.tag_self && (
+                              <span className="status-pill" style={{ fontSize: "0.7rem", padding: "1px 5px", marginRight: 6, background: "rgba(0,0,0,0.05)", color: "var(--accent-dark)", border: "1px solid var(--line)" }}>
+                                {question.tag_self}
+                              </span>
+                            )}
+                            <strong>Autoevaluado:</strong> {question.text_self || question.text}
+                          </div>
+                          <div style={{ marginTop: 4 }}>
+                            {question.tag_evaluator && (
+                              <span className="status-pill" style={{ fontSize: "0.7rem", padding: "1px 5px", marginRight: 6, background: "rgba(0,0,0,0.05)", color: "var(--accent-dark)", border: "1px solid var(--line)" }}>
+                                {question.tag_evaluator}
+                              </span>
+                            )}
+                            <strong>Evaluador:</strong> {question.text_evaluator || question.text}
+                          </div>
+                        </div>
                         <div className="row" style={{ marginTop: 6, gap: 8, justifyContent: "flex-start", flexWrap: "wrap" }}>
                           <span className="status-pill" style={{ fontSize: "0.75rem", padding: "2px 6px" }}>{question.question_type || "numeric_1_10"}</span>
                           {question.is_evaluative ? (
