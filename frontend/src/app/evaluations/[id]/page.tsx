@@ -73,16 +73,26 @@ export default function EvaluationDetail() {
   }, []);
 
   useEffect(() => {
+    setSelectedCompForSuggestion("");
+    setSuggestedQuestions([]);
+    setSelectedPresetQuestions([]);
+    setEditingCompetencyId(null);
+    setEditingQuestionId(null);
+    setEditingParticipantId(null);
+    setResults(null);
+  }, [evaluationId]);
+
+  useEffect(() => {
     if (competencies.length > 0 && !selectedCompForSuggestion) {
       setSelectedCompForSuggestion(competencies[0].id);
     }
   }, [competencies, selectedCompForSuggestion]);
 
   useEffect(() => {
-    if (token) {
+    if (token && evaluationId) {
       void refreshAll(token);
     }
-  }, [token]);
+  }, [token, evaluationId]);
 
   async function refreshAll(authToken = token) {
     if (!authToken) return;
