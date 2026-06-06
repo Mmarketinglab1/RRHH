@@ -26,33 +26,7 @@ import {
   Question,
 } from "@/lib/api";
 
-const PRESETS: Record<string, string[]> = {
-  "Liderazgo": [
-    "¿El evaluado demuestra iniciativa para liderar nuevos proyectos y coordinar al equipo?",
-    "¿El evaluado delega responsabilidades de manera equilibrada y clara?",
-    "¿El evaluado motiva e inspira al equipo para alcanzar objetivos comunes?"
-  ],
-  "Trabajo en Equipo": [
-    "¿El evaluado comparte información y conocimientos de forma abierta con el equipo?",
-    "¿El evaluado colabora de manera constructiva y muestra empatía hacia sus compañeros?",
-    "¿El evaluado ayuda a resolver conflictos dentro del grupo de manera positiva?"
-  ],
-  "Comunicación": [
-    "¿El evaluado se comunica de manera clara, asertiva y respetuosa?",
-    "¿El evaluado escucha activamente las opiniones y sugerencias de los demás?",
-    "¿El evaluado responde de forma oportuna a las consultas y solicitudes?"
-  ],
-  "Orientación a Resultados": [
-    "¿El evaluado demuestra compromiso con la calidad y cumplimiento de los plazos?",
-    "¿El evaluado propone soluciones efectivas ante obstáculos en el trabajo?",
-    "¿El evaluado se enfoca en priorizar tareas para maximizar el impacto?"
-  ],
-  "Adaptabilidad": [
-    "¿El evaluado se adapta con facilidad a los cambios en procesos o prioridades?",
-    "¿El evaluado muestra apertura para recibir retroalimentación y aprender de ella?",
-    "¿El evaluado mantiene una actitud constructiva ante situaciones imprevistas o de alta presión?"
-  ]
-};
+// Banco de preguntas sugeridas migrado a base de datos de manera dinámica
 
 export default function EvaluationDetail() {
   const params = useParams<{ id: string }>();
@@ -73,8 +47,25 @@ export default function EvaluationDetail() {
   
   const [selectedCompForSuggestion, setSelectedCompForSuggestion] = useState<string>("");
   const [selectedPresetQuestions, setSelectedPresetQuestions] = useState<string[]>([]);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<any[]>([]);
 
   const firstCompetency = competencies[0]?.id || "";
+
+  async function loadSuggestedQuestions(competencyId: string, authToken = token) {
+    if (!authToken || !competencyId) return;
+    try {
+      const data = await api<any[]>(`/evaluations/${evaluationId}/suggested-questions?competency_id=${competencyId}`, {}, authToken);
+      setSuggestedQuestions(data);
+    } catch {
+      setSuggestedQuestions([]);
+    }
+  }
+
+  useEffect(() => {
+    if (token && selectedCompForSuggestion) {
+      void loadSuggestedQuestions(selectedCompForSuggestion, token);
+    }
+  }, [token, selectedCompForSuggestion]);
 
   useEffect(() => {
     const saved = localStorage.getItem("rrhh_token");
@@ -111,6 +102,11 @@ export default function EvaluationDetail() {
       setParticipants(participantData);
       setAssignments(assignmentData);
       await loadResults(authToken);
+
+      const activeCompId = selectedCompForSuggestion || competencyData[0]?.id;
+      if (activeCompId) {
+        await loadSuggestedQuestions(activeCompId, authToken);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo cargar la evaluacion");
     } finally {
@@ -164,6 +160,8 @@ export default function EvaluationDetail() {
     const qType = String(data.get("question_type") || "numeric_1_10");
     const rawOpts = String(data.get("options_raw") || "");
     const isEvaluative = data.get("is_evaluative") === "true";
+    const saveToBank = data.get("save_to_bank") === "true";
+    const competencyId = String(data.get("competency_id") || "");
 
     let parsedOptions: any = null;
     if (qType === "semantic_differential") {
@@ -177,34 +175,40 @@ export default function EvaluationDetail() {
       parsedOptions = rawOpts.split(",").map(o => o.trim()).filter(Boolean);
     }
 
-    await postForm<Question>(`/evaluations/${evaluationId}/questions`, event, {
-      competency_id: data.get("competency_id"),
+    const res = await postForm<Question>(`/evaluations/${evaluationId}/questions`, event, {
+      competency_id: competencyId,
       text: data.get("text"),
       position: Number(data.get("position") || questions.length + 1),
       question_type: qType,
       options: parsedOptions,
       is_evaluative: isEvaluative,
+      save_to_bank: saveToBank,
     });
+
+    if (res && competencyId) {
+      void loadSuggestedQuestions(competencyId);
+    }
   }
 
-  async function addPresetQuestions(selectedTexts: string[], targetCompetencyId: string) {
-    if (!token || selectedTexts.length === 0) return;
+  async function addPresetQuestions(selectedPresets: any[], targetCompetencyId: string) {
+    if (!token || selectedPresets.length === 0) return;
     setLoading(true);
     setMessage("");
     try {
-      for (const text of selectedTexts) {
+      for (const preset of selectedPresets) {
         await api(`/evaluations/${evaluationId}/questions`, {
           method: "POST",
           body: JSON.stringify({
             competency_id: targetCompetencyId,
-            text,
+            text: preset.text,
             position: questions.length + 1,
-            question_type: "numeric_1_10",
-            is_evaluative: true,
+            question_type: preset.question_type || "numeric_1_10",
+            options: preset.options || null,
+            is_evaluative: preset.is_evaluative !== undefined ? preset.is_evaluative : true,
           }),
         }, token);
       }
-      setMessage(`Se agregaron ${selectedTexts.length} preguntas sugeridas.`);
+      setMessage(`Se agregaron ${selectedPresets.length} preguntas sugeridas.`);
       await refreshAll(token);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Error al agregar preguntas");
@@ -762,6 +766,12 @@ export default function EvaluationDetail() {
                     💡 <strong>Evaluativa</strong>: Aporta una calificación numérica al promedio ponderado. <strong>Informativa</strong>: recopila retroalimentación cualitativa sin alterar las notas.
                   </span>
                 </div>
+                <div className="field" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                  <input type="checkbox" id="save_to_bank" name="save_to_bank" value="true" style={{ cursor: "pointer" }} />
+                  <label htmlFor="save_to_bank" style={{ cursor: "pointer", fontSize: "0.85rem", fontWeight: 500 }}>
+                    ¿Guardar esta pregunta en el banco de preguntas sugeridas?
+                  </label>
+                </div>
                 <input name="position" type="hidden" value={questions.length + 1} />
                 <button className="button" disabled={loading || !competencies.length} type="submit" style={{ marginTop: 12 }}>
                   <Plus size={16} />
@@ -774,11 +784,8 @@ export default function EvaluationDetail() {
                 const activeComp = competencies.find(c => c.id === (selectedCompForSuggestion || firstCompetency));
                 if (!activeComp) return null;
                 const compName = activeComp.name;
-                
-                const presetKey = Object.keys(PRESETS).find(k => k.toLowerCase() === compName.toLowerCase() || compName.toLowerCase().includes(k.toLowerCase()));
-                const suggestions = presetKey ? PRESETS[presetKey] : null;
 
-                if (!suggestions) return null;
+                if (suggestedQuestions.length === 0) return null;
 
                 return (
                   <div style={{ marginTop: 24, padding: 14, background: "rgba(0,0,0,0.015)", borderRadius: 8, border: "1px dashed var(--line)" }}>
@@ -789,21 +796,26 @@ export default function EvaluationDetail() {
                       Hemos encontrado preguntas sugeridas para "{compName}". Marca las que desees para agregarlas:
                     </p>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {suggestions.map((text) => {
-                        const isChecked = selectedPresetQuestions.includes(text);
+                      {suggestedQuestions.map((q) => {
+                        const isChecked = selectedPresetQuestions.includes(q.id);
                         return (
-                          <label key={text} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: "0.8rem", cursor: "pointer" }}>
+                          <label key={q.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: "0.8rem", cursor: "pointer" }}>
                             <input
                               type="checkbox"
                               checked={isChecked}
                               style={{ marginTop: 2 }}
                               onChange={() => {
                                 setSelectedPresetQuestions(prev => 
-                                  isChecked ? prev.filter(t => t !== text) : [...prev, text]
+                                  isChecked ? prev.filter(id => id !== q.id) : [...prev, q.id]
                                 );
                               }}
                             />
-                            <span>{text}</span>
+                            <div>
+                              <span>{q.text}</span>
+                              <span className="muted" style={{ fontSize: "0.7rem", marginLeft: 6 }}>
+                                ({q.question_type === "numeric_1_10" ? "Escala 1-4" : q.question_type.toUpperCase()})
+                              </span>
+                            </div>
                           </label>
                         );
                       })}
@@ -814,7 +826,8 @@ export default function EvaluationDetail() {
                         className="button"
                         style={{ marginTop: 12, padding: "5px 10px", fontSize: "0.8rem", minHeight: 32 }}
                         onClick={async () => {
-                          await addPresetQuestions(selectedPresetQuestions, activeComp.id);
+                          const selectedPresets = suggestedQuestions.filter(q => selectedPresetQuestions.includes(q.id));
+                          await addPresetQuestions(selectedPresets, activeComp.id);
                           setSelectedPresetQuestions([]);
                         }}
                         disabled={loading}

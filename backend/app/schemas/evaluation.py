@@ -53,6 +53,7 @@ class QuestionCreate(BaseModel):
     question_type: str = "numeric_1_10"
     options: list | dict | None = None
     is_evaluative: bool = True
+    save_to_bank: bool = False
 
 
 class QuestionUpdate(BaseModel):
@@ -70,6 +71,18 @@ class QuestionRead(BaseModel):
     competency_id: UUID
     text: str
     position: int
+    question_type: str
+    options: list | dict | None
+    is_evaluative: bool
+
+    model_config = {"from_attributes": True}
+
+
+class QuestionBankRead(BaseModel):
+    id: UUID
+    company_id: UUID | None
+    competency_name: str
+    text: str
     question_type: str
     options: list | dict | None
     is_evaluative: bool

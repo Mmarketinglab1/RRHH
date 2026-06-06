@@ -1,5 +1,5 @@
 from app.models.company import Company
-from app.models.evaluation import Competency, Evaluation, Question
+from app.models.evaluation import Competency, Evaluation, Question, QuestionBank
 from app.models.participant import EvaluatorAssignment, Participant
 from app.models.report import AIReport
 from app.models.response import Response, SurveyToken
@@ -13,6 +13,7 @@ __all__ = [
     "EvaluatorAssignment",
     "Participant",
     "Question",
+    "QuestionBank",
     "Response",
     "SurveyToken",
     "User",

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.evaluation import Competency, Evaluation, Question
+from app.models.evaluation import Competency, Evaluation, Question, QuestionBank
 from app.schemas.auth import CurrentUser
 from app.schemas.evaluation import (
     CompetencyCreate,
@@ -18,6 +18,7 @@ from app.schemas.evaluation import (
     QuestionCreate,
     QuestionRead,
     QuestionUpdate,
+    QuestionBankRead,
 )
 
 router = APIRouter()
@@ -136,9 +137,48 @@ def create_question(
         is_evaluative=payload.is_evaluative,
     )
     db.add(question)
+
+    if payload.save_to_bank:
+        stmt = select(QuestionBank).where(
+            QuestionBank.company_id == current_user.company_id,
+            func.lower(QuestionBank.competency_name) == func.lower(competency.name),
+            func.lower(QuestionBank.text) == func.lower(payload.text)
+        )
+        existing = db.scalars(stmt).first()
+        if not existing:
+            bank_item = QuestionBank(
+                company_id=current_user.company_id,
+                competency_name=competency.name,
+                text=payload.text,
+                question_type=payload.question_type,
+                options=payload.options,
+                is_evaluative=payload.is_evaluative
+            )
+            db.add(bank_item)
+
     db.commit()
     db.refresh(question)
     return question
+
+
+@router.get("/{evaluation_id}/suggested-questions", response_model=list[QuestionBankRead])
+def list_suggested_questions(
+    evaluation_id: UUID,
+    competency_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[QuestionBank]:
+    _ensure_evaluation(db, current_user.company_id, evaluation_id)
+    competency = db.get(Competency, competency_id)
+    if not competency or competency.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="Competency not found")
+
+    comp_name_lower = competency.name.strip().lower()
+    stmt = select(QuestionBank).where(
+        func.lower(QuestionBank.competency_name) == comp_name_lower,
+        (QuestionBank.company_id == None) | (QuestionBank.company_id == current_user.company_id)
+    )
+    return list(db.scalars(stmt).all())
 
 
 @router.get("/{evaluation_id}/questions", response_model=list[QuestionRead])

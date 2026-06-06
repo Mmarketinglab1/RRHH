@@ -59,3 +59,19 @@ class Question(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class QuestionBank(Base):
+    __tablename__ = "question_bank"
+
+    id: Mapped[PyUUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[PyUUID | None] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=True)
+    competency_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    question_type: Mapped[str] = mapped_column(String(50), default="numeric_1_10", nullable=False)
+    options: Mapped[list | dict | None] = mapped_column(JSON, default=None, nullable=True)
+    is_evaluative: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
