@@ -333,7 +333,7 @@ export default function EvaluationDetail() {
       a.download = "plantilla_competencias.xlsx";
       document.body.appendChild(a);
       a.click();
-      a.removeChild(a);
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Error al descargar plantilla");
@@ -406,7 +406,7 @@ export default function EvaluationDetail() {
       a.download = "plantilla_participantes.xlsx";
       document.body.appendChild(a);
       a.click();
-      a.removeChild(a);
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Error al descargar plantilla");
@@ -761,7 +761,7 @@ export default function EvaluationDetail() {
                 <div className="field">
                   <label>Tipo de Pregunta</label>
                   <select className="select" defaultValue="numeric_1_10" name="question_type" required>
-                    <option value="numeric_1_10">Escala Numérica (1-10)</option>
+                    <option value="numeric_1_10">Escala Numérica (1-4)</option>
                     <option value="nps">NPS (Net Promoter Score 0-10)</option>
                     <option value="dicotomic">Dicotómica (Sí/No)</option>
                     <option value="likert">Escala Likert (5 opciones estándar)</option>
@@ -894,7 +894,7 @@ export default function EvaluationDetail() {
                         <div className="field">
                           <label>Tipo</label>
                           <select className="select" defaultValue={question.question_type || "numeric_1_10"} name="question_type" required>
-                            <option value="numeric_1_10">Escala Numérica (1-10)</option>
+                            <option value="numeric_1_10">Escala Numérica (1-4)</option>
                             <option value="nps">NPS (Net Promoter Score 0-10)</option>
                             <option value="dicotomic">Dicotómica (Sí/No)</option>
                             <option value="likert">Escala Likert (5 opciones estándar)</option>
