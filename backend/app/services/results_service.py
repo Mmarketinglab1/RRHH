@@ -119,7 +119,8 @@ def calculate_evaluation_results(
                     steps = question.options.get("steps", 7)
                 distribution = {str(i): 0 for i in range(1, steps + 1)}
             elif question.question_type == "numeric_1_10":
-                distribution = {str(i): 0 for i in range(1, 11)}
+                distribution = {str(i): 0 for i in range(1, 5)}
+                distribution["No observado"] = 0
 
             by_question[question.id] = {
                 "text": question.text,
@@ -144,9 +145,12 @@ def calculate_evaluation_results(
                 q_bucket["distribution"]["Pasivos (7-8)"] += 1
             else:
                 q_bucket["distribution"]["Detractores (0-6)"] += 1
-        elif q_type in ("numeric_1_10", "semantic_differential") and response.score is not None:
-            key = str(response.score)
-            q_bucket["distribution"][key] = q_bucket["distribution"].get(key, 0) + 1
+        elif q_type in ("numeric_1_10", "semantic_differential"):
+            if response.score is not None:
+                key = str(response.score)
+                q_bucket["distribution"][key] = q_bucket["distribution"].get(key, 0) + 1
+            else:
+                q_bucket["distribution"]["No observado"] = q_bucket["distribution"].get("No observado", 0) + 1
         elif q_type in ("dicotomic", "single_choice", "likert", "frequency", "categorization") and response.selected_option:
             # Map Sí/Yes/Verdadero to Sí and No/False/Falso to No for dicotomic distribution key
             val = str(response.selected_option)

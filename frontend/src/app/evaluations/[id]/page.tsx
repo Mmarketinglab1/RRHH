@@ -26,6 +26,34 @@ import {
   Question,
 } from "@/lib/api";
 
+const PRESETS: Record<string, string[]> = {
+  "Liderazgo": [
+    "¿El evaluado demuestra iniciativa para liderar nuevos proyectos y coordinar al equipo?",
+    "¿El evaluado delega responsabilidades de manera equilibrada y clara?",
+    "¿El evaluado motiva e inspira al equipo para alcanzar objetivos comunes?"
+  ],
+  "Trabajo en Equipo": [
+    "¿El evaluado comparte información y conocimientos de forma abierta con el equipo?",
+    "¿El evaluado colabora de manera constructiva y muestra empatía hacia sus compañeros?",
+    "¿El evaluado ayuda a resolver conflictos dentro del grupo de manera positiva?"
+  ],
+  "Comunicación": [
+    "¿El evaluado se comunica de manera clara, asertiva y respetuosa?",
+    "¿El evaluado escucha activamente las opiniones y sugerencias de los demás?",
+    "¿El evaluado responde de forma oportuna a las consultas y solicitudes?"
+  ],
+  "Orientación a Resultados": [
+    "¿El evaluado demuestra compromiso con la calidad y cumplimiento de los plazos?",
+    "¿El evaluado propone soluciones efectivas ante obstáculos en el trabajo?",
+    "¿El evaluado se enfoca en priorizar tareas para maximizar el impacto?"
+  ],
+  "Adaptabilidad": [
+    "¿El evaluado se adapta con facilidad a los cambios en procesos o prioridades?",
+    "¿El evaluado muestra apertura para recibir retroalimentación y aprender de ella?",
+    "¿El evaluado mantiene una actitud constructiva ante situaciones imprevistas o de alta presión?"
+  ]
+};
+
 export default function EvaluationDetail() {
   const params = useParams<{ id: string }>();
   const evaluationId = params.id;
@@ -42,6 +70,9 @@ export default function EvaluationDetail() {
   const [editingCompetencyId, setEditingCompetencyId] = useState<string | null>(null);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
+  
+  const [selectedCompForSuggestion, setSelectedCompForSuggestion] = useState<string>("");
+  const [selectedPresetQuestions, setSelectedPresetQuestions] = useState<string[]>([]);
 
   const firstCompetency = competencies[0]?.id || "";
 
@@ -49,6 +80,12 @@ export default function EvaluationDetail() {
     const saved = localStorage.getItem("rrhh_token");
     setToken(saved);
   }, []);
+
+  useEffect(() => {
+    if (competencies.length > 0 && !selectedCompForSuggestion) {
+      setSelectedCompForSuggestion(competencies[0].id);
+    }
+  }, [competencies, selectedCompForSuggestion]);
 
   useEffect(() => {
     if (token) {
@@ -118,7 +155,7 @@ export default function EvaluationDetail() {
     await postForm<Competency>(`/evaluations/${evaluationId}/competencies`, event, {
       name: data.get("name"),
       description: data.get("description"),
-      weight: Number(data.get("weight") || 1),
+      weight: Number(data.get("weight") || 100) / 100,
     });
   }
 
@@ -150,6 +187,32 @@ export default function EvaluationDetail() {
     });
   }
 
+  async function addPresetQuestions(selectedTexts: string[], targetCompetencyId: string) {
+    if (!token || selectedTexts.length === 0) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      for (const text of selectedTexts) {
+        await api(`/evaluations/${evaluationId}/questions`, {
+          method: "POST",
+          body: JSON.stringify({
+            competency_id: targetCompetencyId,
+            text,
+            position: questions.length + 1,
+            question_type: "numeric_1_10",
+            is_evaluative: true,
+          }),
+        }, token);
+      }
+      setMessage(`Se agregaron ${selectedTexts.length} preguntas sugeridas.`);
+      await refreshAll(token);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Error al agregar preguntas");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function generateQuestions() {
     if (!token) return;
     setLoading(true);
@@ -179,7 +242,7 @@ export default function EvaluationDetail() {
       evaluatee_id: data.get("evaluatee_id"),
       evaluator_id: data.get("evaluator_id"),
       relationship: data.get("relationship") || "peer",
-      weight: Number(data.get("weight") || 1),
+      weight: Number(data.get("weight") || 100) / 100,
     });
     if (assignment) {
       setAssignments((current) => [assignment, ...current]);
@@ -314,6 +377,79 @@ export default function EvaluationDetail() {
     }
   }
 
+  async function handleDownloadParticipantsTemplate() {
+    if (!token) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${API_URL}/evaluations/${evaluationId}/participants/import-template`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error("No se pudo descargar la plantilla");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "plantilla_participantes.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Error al descargar plantilla");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleParticipantsExcelUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !token) return;
+
+    setLoading(true);
+    setMessage("");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(`${API_URL}/evaluations/${evaluationId}/participants/import`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMsg = "Error al importar el archivo";
+        try {
+          const errData = await response.json();
+          errorMsg = errData.detail || errorMsg;
+        } catch {
+          // Ignore
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+      setMessage(
+        `Importación completa: se crearon ${result.participants_created} participantes y ${result.assignments_created} asignaciones de relaciones.`
+      );
+      
+      event.target.value = "";
+      await refreshAll(token);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Error al importar Excel");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function updateCompetency(event: FormEvent<HTMLFormElement>, competencyId: string) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -323,7 +459,7 @@ export default function EvaluationDetail() {
       {
         name: data.get("name"),
         description: data.get("description"),
-        weight: Number(data.get("weight") || 1),
+        weight: Number(data.get("weight") || 100) / 100,
       },
     );
     if (updated) setEditingCompetencyId(null);
@@ -388,6 +524,20 @@ export default function EvaluationDetail() {
     [participants],
   );
 
+  const groupedAssignments = useMemo(() => {
+    const groups: Record<string, { evaluateeName: string; list: Assignment[] }> = {};
+    assignments.forEach((assignment) => {
+      const evaluatee = participants.find((p) => p.id === assignment.evaluatee_id);
+      const evaluateeName = evaluatee ? evaluatee.full_name : "Desconocido";
+      
+      if (!groups[assignment.evaluatee_id]) {
+        groups[assignment.evaluatee_id] = { evaluateeName, list: [] };
+      }
+      groups[assignment.evaluatee_id].list.push(assignment);
+    });
+    return Object.entries(groups);
+  }, [assignments, participants]);
+
   if (!token) {
     return (
       <main className="content">
@@ -403,7 +553,7 @@ export default function EvaluationDetail() {
     <main className="shell">
       <header className="topbar">
         <Link className="brand" href="/">
-          <span className="brand-mark">360</span>
+          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 28, objectFit: "contain" }} />
           <span>RRHH 360 AI</span>
         </Link>
         <button className="button secondary" onClick={() => refreshAll()} type="button">
@@ -494,8 +644,8 @@ export default function EvaluationDetail() {
                   <textarea className="textarea" name="description" />
                 </div>
                 <div className="field">
-                  <label>Peso</label>
-                  <input className="input" defaultValue="1" min="0.1" name="weight" step="0.1" type="number" />
+                  <label>Peso (%)</label>
+                  <input className="input" defaultValue="100" min="10" max="100" name="weight" step="10" type="number" />
                 </div>
                 <button className="button" disabled={loading} type="submit">
                   <Plus size={16} />
@@ -509,7 +659,7 @@ export default function EvaluationDetail() {
                       <form className="form" onSubmit={(event) => updateCompetency(event, competency.id)}>
                         <input className="input" defaultValue={competency.name} name="name" required />
                         <textarea className="textarea" defaultValue={competency.description || ""} name="description" />
-                        <input className="input" defaultValue={competency.weight} min="0.1" name="weight" step="0.1" type="number" />
+                        <input className="input" defaultValue={Math.round(Number(competency.weight) * 100)} min="10" max="100" name="weight" step="10" type="number" />
                         <div className="toolbar">
                           <button className="button" disabled={loading} type="submit">
                             <Save size={16} />
@@ -525,7 +675,7 @@ export default function EvaluationDetail() {
                       <>
                         <div className="row">
                           <strong>{competency.name}</strong>
-                          <span className="status-pill">Peso {competency.weight}</span>
+                          <span className="status-pill">Peso {Math.round(Number(competency.weight) * 100)}%</span>
                         </div>
                         {competency.description && <span className="muted">{competency.description}</span>}
                         <div className="toolbar">
@@ -561,7 +711,16 @@ export default function EvaluationDetail() {
               <form className="form" onSubmit={addQuestion} style={{ marginTop: 14 }}>
                 <div className="field">
                   <label>Competencia</label>
-                  <select className="select" defaultValue={firstCompetency} name="competency_id" required>
+                  <select 
+                    className="select" 
+                    defaultValue={firstCompetency} 
+                    name="competency_id" 
+                    required
+                    onChange={(e) => {
+                      setSelectedCompForSuggestion(e.target.value);
+                      setSelectedPresetQuestions([]);
+                    }}
+                  >
                     {competencies.map((competency) => (
                       <option key={competency.id} value={competency.id}>
                         {competency.name}
@@ -593,18 +752,79 @@ export default function EvaluationDetail() {
                   <label>Opciones (separadas por coma; ej: Aceptable, Bueno, Excelente. Para diferencial: "Malo - Bueno")</label>
                   <input className="input" name="options_raw" placeholder="Opción A, Opción B, Opción C" />
                 </div>
-                <div className="field" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
-                  <select className="select" defaultValue="true" name="is_evaluative" style={{ width: "auto", minHeight: 34, padding: "4px 8px" }}>
+                <div className="field" style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 12 }}>
+                  <label>Uso Estadístico</label>
+                  <select className="select" defaultValue="true" name="is_evaluative" style={{ width: "100%", minHeight: 34, padding: "4px 8px" }}>
                     <option value="true">Sí (Evaluativa - suma al promedio de competencia)</option>
                     <option value="false">No (Informativa / Cualitativa únicamente)</option>
                   </select>
+                  <span className="muted" style={{ fontSize: "0.75rem", marginTop: 2 }}>
+                    💡 <strong>Evaluativa</strong>: Aporta una calificación numérica al promedio ponderado. <strong>Informativa</strong>: recopila retroalimentación cualitativa sin alterar las notas.
+                  </span>
                 </div>
                 <input name="position" type="hidden" value={questions.length + 1} />
-                <button className="button" disabled={loading || !competencies.length} type="submit" style={{ marginTop: 8 }}>
+                <button className="button" disabled={loading || !competencies.length} type="submit" style={{ marginTop: 12 }}>
                   <Plus size={16} />
                   Agregar Pregunta
                 </button>
               </form>
+
+              {/* Banco de Preguntas Sugeridas */}
+              {(() => {
+                const activeComp = competencies.find(c => c.id === (selectedCompForSuggestion || firstCompetency));
+                if (!activeComp) return null;
+                const compName = activeComp.name;
+                
+                const presetKey = Object.keys(PRESETS).find(k => k.toLowerCase() === compName.toLowerCase() || compName.toLowerCase().includes(k.toLowerCase()));
+                const suggestions = presetKey ? PRESETS[presetKey] : null;
+
+                if (!suggestions) return null;
+
+                return (
+                  <div style={{ marginTop: 24, padding: 14, background: "rgba(0,0,0,0.015)", borderRadius: 8, border: "1px dashed var(--line)" }}>
+                    <h4 style={{ fontWeight: 700, fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 6, marginBottom: 8, color: "var(--accent-dark)" }}>
+                      📚 Banco de Preguntas Sugeridas
+                    </h4>
+                    <p className="muted" style={{ fontSize: "0.75rem", marginBottom: 10 }}>
+                      Hemos encontrado preguntas sugeridas para "{compName}". Marca las que desees para agregarlas:
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {suggestions.map((text) => {
+                        const isChecked = selectedPresetQuestions.includes(text);
+                        return (
+                          <label key={text} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: "0.8rem", cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              style={{ marginTop: 2 }}
+                              onChange={() => {
+                                setSelectedPresetQuestions(prev => 
+                                  isChecked ? prev.filter(t => t !== text) : [...prev, text]
+                                );
+                              }}
+                            />
+                            <span>{text}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {selectedPresetQuestions.length > 0 && (
+                      <button
+                        type="button"
+                        className="button"
+                        style={{ marginTop: 12, padding: "5px 10px", fontSize: "0.8rem", minHeight: 32 }}
+                        onClick={async () => {
+                          await addPresetQuestions(selectedPresetQuestions, activeComp.id);
+                          setSelectedPresetQuestions([]);
+                        }}
+                        disabled={loading}
+                      >
+                        Cargar {selectedPresetQuestions.length} seleccionadas
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="list">
                 {questions.map((question) => (
                   <div className="item" key={question.id} style={{ display: "block" }}>
@@ -729,7 +949,33 @@ export default function EvaluationDetail() {
         {activeTab === "participants" && (
           <div className="grid two">
             <section className="panel">
-              <h2>Participantes</h2>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <h2>Participantes</h2>
+                <div className="toolbar" style={{ gap: 8 }}>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={handleDownloadParticipantsTemplate}
+                    disabled={loading}
+                    style={{ fontSize: "0.8rem", padding: "6px 10px" }}
+                  >
+                    Descargar Plantilla
+                  </button>
+                  <label
+                    className="button secondary"
+                    style={{ fontSize: "0.8rem", padding: "6px 10px", cursor: "pointer", margin: 0 }}
+                  >
+                    Importar Excel
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      style={{ display: "none" }}
+                      onChange={handleParticipantsExcelUpload}
+                      disabled={loading}
+                    />
+                  </label>
+                </div>
+              </div>
               <form className="form" onSubmit={addParticipant} style={{ marginTop: 14 }}>
                 <div className="field">
                   <label>Email</label>
@@ -813,14 +1059,16 @@ export default function EvaluationDetail() {
                   <label>Relacion</label>
                   <select className="select" name="relationship">
                     <option value="peer">Par</option>
-                    <option value="manager">Manager</option>
-                    <option value="direct_report">Reporte</option>
-                    <option value="self">Autoevaluacion</option>
+                    <option value="direct_report">Reporte Directo</option>
+                    <option value="line_manager">Líder directo</option>
+                    <option value="indirect_manager">Líder indirecto</option>
+                    <option value="external_client">Cliente Externo</option>
+                    <option value="internal_client">Cliente Interno</option>
                   </select>
                 </div>
                 <div className="field">
-                  <label>Peso</label>
-                  <input className="input" defaultValue="1" min="0.1" name="weight" step="0.1" type="number" />
+                  <label>Peso (%)</label>
+                  <input className="input" defaultValue="100" min="10" max="100" name="weight" step="10" type="number" />
                 </div>
                 <button className="button" disabled={loading || participants.length < 2} type="submit">
                   <ClipboardList size={16} />
@@ -828,14 +1076,52 @@ export default function EvaluationDetail() {
                 </button>
               </form>
               <div className="list">
-                {assignments.map((assignment) => (
-                  <div className="item" key={assignment.id}>
-                    <div className="row">
-                      <strong>{assignment.relationship}</strong>
-                      <button className="button secondary" onClick={() => generateToken(assignment.id)} type="button">
-                        <LinkIcon size={16} />
-                        Link encuesta
-                      </button>
+                {groupedAssignments.map(([evaluateeId, group]) => (
+                  <div key={evaluateeId} style={{ marginBottom: 20, borderBottom: "1px solid var(--line)", paddingBottom: 14 }}>
+                    <h4 style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--accent-dark)", marginBottom: 8 }}>
+                      Colaborador: {group.evaluateeName}
+                    </h4>
+                    <div style={{ paddingLeft: 10 }}>
+                      {group.list.map((assignment) => {
+                        const evaluator = participants.find((p) => p.id === assignment.evaluator_id);
+                        const evaluatorName = evaluator ? evaluator.full_name : "Desconocido";
+                        
+                        const relFriendlyNames: Record<string, string> = {
+                          self: "Autoevaluación",
+                          peer: "Par",
+                          direct_report: "Reporte Directo",
+                          line_manager: "Líder directo",
+                          indirect_manager: "Líder indirecto",
+                          external_client: "Cliente Externo",
+                          internal_client: "Cliente Interno",
+                        };
+                        const relLabel = relFriendlyNames[assignment.relationship] || assignment.relationship;
+
+                        return (
+                          <div className="item" key={assignment.id} style={{ marginTop: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <strong>{evaluatorName}</strong> 
+                              <span className="muted" style={{ marginLeft: 6, fontSize: "0.8rem" }}>({relLabel})</span>
+                              <span className="status-pill" style={{ marginLeft: 8, fontSize: "0.75rem", padding: "1px 5px" }}>Peso: {Math.round(Number(assignment.weight) * 100)}%</span>
+                            </div>
+                            <div className="toolbar" style={{ gap: 6 }}>
+                              <button className="button secondary" onClick={() => generateToken(assignment.id)} type="button" style={{ minHeight: 30, height: 30, padding: "2px 8px", fontSize: "0.75rem" }}>
+                                <LinkIcon size={12} />
+                                Copiar Link
+                              </button>
+                              <button
+                                className="button danger"
+                                onClick={() => deleteResource(`/evaluations/${evaluationId}/assignments/${assignment.id}`, "asignación")}
+                                type="button"
+                                style={{ minHeight: 30, height: 30, padding: "2px 8px", fontSize: "0.75rem" }}
+                              >
+                                <Trash2 size={12} />
+                                Borrar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

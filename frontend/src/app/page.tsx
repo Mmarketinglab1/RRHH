@@ -141,7 +141,7 @@ export default function HomePage() {
       <main className="auth-page">
         <section className="panel auth-card">
           <div className="brand" style={{ marginBottom: 18 }}>
-            <span className="brand-mark">360</span>
+            <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 30, objectFit: "contain" }} />
             <span>RRHH 360 AI</span>
           </div>
           {apiStatus && <p className={apiStatus.includes("conectada") ? "success" : "error"}>{apiStatus}</p>}
@@ -201,7 +201,7 @@ export default function HomePage() {
     <main className="shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">360</span>
+          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 28, objectFit: "contain" }} />
           <span>RRHH 360 AI</span>
         </div>
         <button className="button secondary" onClick={logout} type="button">

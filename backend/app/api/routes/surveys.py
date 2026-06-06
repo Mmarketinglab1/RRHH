@@ -62,6 +62,7 @@ def get_public_survey(token: str, db: Session = Depends(get_db)) -> PublicSurvey
         evaluation_title=evaluation.title,
         evaluatee_name=evaluatee.full_name,
         evaluator_name=evaluator.full_name,
+        relationship=assignment.relationship,
         questions=[
             SurveyQuestion(
                 id=question.id,

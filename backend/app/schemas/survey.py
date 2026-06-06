@@ -22,6 +22,7 @@ class PublicSurveyRead(BaseModel):
     evaluation_title: str
     evaluatee_name: str
     evaluator_name: str
+    relationship: str
     questions: list[SurveyQuestion]
 
 

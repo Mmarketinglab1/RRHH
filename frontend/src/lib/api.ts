@@ -86,6 +86,7 @@ export type PublicSurvey = {
   evaluation_title: string;
   evaluatee_name: string;
   evaluator_name: string;
+  relationship: string;
   questions: Array<{
     id: string;
     text: string;

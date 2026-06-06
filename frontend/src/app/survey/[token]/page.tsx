@@ -11,7 +11,7 @@ export default function SurveyPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [answers, setAnswers] = useState<
-    Record<string, { score?: number; selected_option?: string; selected_options?: string[] }>
+    Record<string, { score?: number | null; selected_option?: string; selected_options?: string[]; no_observed?: boolean }>
   >({});
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function SurveyPage() {
 
       const qType = question.question_type;
       if (qType === "numeric_1_10" || qType === "nps" || qType === "semantic_differential") {
-        return ans.score === undefined;
+        return ans.score === undefined && !ans.no_observed;
       }
       if (
         qType === "dicotomic" ||
@@ -98,18 +98,28 @@ export default function SurveyPage() {
     if (qType === "numeric_1_10") {
       return (
         <div className="field">
-          <label>Puntaje 1 a 10</label>
-          <div className="rating-options">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+          <label>Puntaje 1 a 4</label>
+          <div className="rating-options" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {[1, 2, 3, 4].map((num) => (
               <button
                 key={num}
                 type="button"
                 className={`rating-btn ${ans.score === num ? "selected" : ""}`}
-                onClick={() => setAnswers((prev) => ({ ...prev, [question.id]: { score: num } }))}
+                onClick={() => setAnswers((prev) => ({ ...prev, [question.id]: { score: num, no_observed: false } }))}
               >
                 {num}
               </button>
             ))}
+            {survey?.relationship !== "self" && (
+              <button
+                type="button"
+                className={`rating-btn ${ans.score === null && ans.no_observed ? "selected" : ""}`}
+                style={{ borderRadius: 10, width: "auto", padding: "0 14px" }}
+                onClick={() => setAnswers((prev) => ({ ...prev, [question.id]: { score: null, no_observed: true } }))}
+              >
+                No observado
+              </button>
+            )}
           </div>
         </div>
       );
@@ -301,7 +311,7 @@ export default function SurveyPage() {
     <main className="shell survey-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">360</span>
+          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 28, objectFit: "contain" }} />
           <span>Encuesta 360</span>
         </div>
       </header>
