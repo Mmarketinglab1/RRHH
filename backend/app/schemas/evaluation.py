@@ -24,21 +24,44 @@ class EvaluationRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CompetencyBankCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=255)
+    description: str | None = None
+
+
+class CompetencyBankUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=255)
+    description: str | None = None
+
+
+class CompetencyBankRead(BaseModel):
+    id: UUID
+    name: str
+    description: str | None
+    company_id: UUID | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class CompetencyCreate(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     description: str | None = None
     weight: Decimal = Field(default=Decimal("1.0"), gt=0)
+    competency_bank_id: UUID | None = None
 
 
 class CompetencyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=160)
     description: str | None = None
     weight: Decimal | None = Field(default=None, gt=0)
+    competency_bank_id: UUID | None = None
 
 
 class CompetencyRead(BaseModel):
     id: UUID
     evaluation_id: UUID
+    competency_bank_id: UUID | None = None
     name: str
     description: str | None
     weight: Decimal
@@ -93,6 +116,7 @@ class QuestionRead(BaseModel):
 class QuestionBankRead(BaseModel):
     id: UUID
     company_id: UUID | None
+    competency_bank_id: UUID | None = None
     competency_name: str
     text: str
     text_self: str | None = None

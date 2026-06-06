@@ -4,7 +4,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.middleware import TenantContextMiddleware
-from app.api.routes import ai, auth, competencies, evaluations, participants, results, surveys
+from app.api.routes import ai, auth, competencies, competency_bank, evaluations, participants, results, surveys
 from app.core.config import settings
 from app.core.rate_limit import limiter
 
@@ -43,3 +43,4 @@ app.include_router(participants.router, prefix="/evaluations", tags=["participan
 app.include_router(surveys.router, prefix="/surveys", tags=["surveys"])
 app.include_router(results.router, prefix="/evaluations", tags=["results"])
 app.include_router(ai.router, prefix="/evaluations", tags=["ai"])
+app.include_router(competency_bank.router, prefix="/competency-bank", tags=["competency-bank"])

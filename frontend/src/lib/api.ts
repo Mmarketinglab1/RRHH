@@ -11,9 +11,18 @@ export type Evaluation = {
   created_at: string;
 };
 
+export type CompetencyBank = {
+  id: string;
+  name: string;
+  description: string | null;
+  company_id: string | null;
+  created_at: string;
+};
+
 export type Competency = {
   id: string;
   evaluation_id: string;
+  competency_bank_id: string | null;
   name: string;
   description: string | null;
   weight: string;

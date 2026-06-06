@@ -42,6 +42,7 @@ def create_competency(
     competency = Competency(
         company_id=current_user.company_id,
         evaluation_id=evaluation_id,
+        competency_bank_id=payload.competency_bank_id,
         name=payload.name,
         description=payload.description,
         weight=payload.weight,
@@ -183,6 +184,16 @@ def list_suggested_questions(
     competency = db.get(Competency, competency_id)
     if not competency or competency.company_id != current_user.company_id:
         raise HTTPException(status_code=404, detail="Competency not found")
+
+    # Si la competencia está enlazada al banco de competencias, buscar por ID
+    if competency.competency_bank_id:
+        stmt = select(QuestionBank).where(
+            QuestionBank.competency_bank_id == competency.competency_bank_id,
+            (QuestionBank.company_id == None) | (QuestionBank.company_id == current_user.company_id)
+        )
+        questions = list(db.scalars(stmt).all())
+        if questions:
+            return questions
 
     comp_name_lower = competency.name.strip().lower()
     stmt = select(QuestionBank).where(

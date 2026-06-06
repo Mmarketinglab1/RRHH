@@ -20,6 +20,7 @@ import {
   API_URL,
   Assignment,
   Competency,
+  CompetencyBank,
   Evaluation,
   EvaluationResults,
   Participant,
@@ -48,6 +49,10 @@ export default function EvaluationDetail() {
   const [selectedCompForSuggestion, setSelectedCompForSuggestion] = useState<string>("");
   const [selectedPresetQuestions, setSelectedPresetQuestions] = useState<string[]>([]);
   const [suggestedQuestions, setSuggestedQuestions] = useState<any[]>([]);
+
+  const [competencyBankOptions, setCompetencyBankOptions] = useState<CompetencyBank[]>([]);
+  const [isCustomCompetency, setIsCustomCompetency] = useState<boolean>(false);
+  const [prefilledDesc, setPrefilledDesc] = useState<string>("");
 
   const firstCompetency = competencies[0]?.id || "";
 
@@ -99,18 +104,20 @@ export default function EvaluationDetail() {
     setLoading(true);
     setMessage("");
     try {
-      const [evaluationData, competencyData, questionData, participantData, assignmentData] = await Promise.all([
+      const [evaluationData, competencyData, questionData, participantData, assignmentData, bankData] = await Promise.all([
         api<Evaluation>(`/evaluations/${evaluationId}`, {}, authToken),
         api<Competency[]>(`/evaluations/${evaluationId}/competencies`, {}, authToken),
         api<Question[]>(`/evaluations/${evaluationId}/questions`, {}, authToken),
         api<Participant[]>(`/evaluations/${evaluationId}/participants`, {}, authToken),
         api<Assignment[]>(`/evaluations/${evaluationId}/assignments`, {}, authToken),
+        api<CompetencyBank[]>("/competency-bank", {}, authToken),
       ]);
       setEvaluation(evaluationData);
       setCompetencies(competencyData);
       setQuestions(questionData);
       setParticipants(participantData);
       setAssignments(assignmentData);
+      setCompetencyBankOptions(bankData);
       await loadResults(authToken);
 
       const activeCompId = selectedCompForSuggestion || competencyData[0]?.id;
@@ -158,11 +165,38 @@ export default function EvaluationDetail() {
 
   async function addCompetency(event: FormEvent<HTMLFormElement>) {
     const data = new FormData(event.currentTarget);
-    await postForm<Competency>(`/evaluations/${evaluationId}/competencies`, event, {
-      name: data.get("name"),
+    const bankSelectVal = String(data.get("competency_bank_select") || "");
+    
+    let compName = "";
+    let compBankId: string | null = null;
+    
+    if (bankSelectVal === "custom") {
+      compName = String(data.get("custom_name") || "").trim();
+    } else {
+      const selectedBank = competencyBankOptions.find(b => b.id === bankSelectVal);
+      if (selectedBank) {
+        compName = selectedBank.name;
+        compBankId = selectedBank.id;
+      }
+    }
+    
+    if (!compName) {
+      setMessage("Por favor selecciona o escribe una competencia válida.");
+      event.preventDefault();
+      return;
+    }
+
+    const res = await postForm<Competency>(`/evaluations/${evaluationId}/competencies`, event, {
+      name: compName,
+      competency_bank_id: compBankId,
       description: data.get("description"),
       weight: Number(data.get("weight") || 100) / 100,
     });
+
+    if (res) {
+      setIsCustomCompetency(false);
+      setPrefilledDesc("");
+    }
   }
 
   async function addQuestion(event: FormEvent<HTMLFormElement>) {
@@ -660,12 +694,48 @@ export default function EvaluationDetail() {
               </div>
               <form className="form" onSubmit={addCompetency} style={{ marginTop: 14 }}>
                 <div className="field">
-                  <label>Nombre</label>
-                  <input className="input" name="name" required />
+                  <label>Competencia</label>
+                  <select 
+                    className="select" 
+                    name="competency_bank_select" 
+                    required 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setIsCustomCompetency(val === "custom");
+                      if (val !== "custom") {
+                        const selectedBank = competencyBankOptions.find(b => b.id === val);
+                        if (selectedBank) {
+                          setPrefilledDesc(selectedBank.description || "");
+                        } else {
+                          setPrefilledDesc("");
+                        }
+                      } else {
+                        setPrefilledDesc("");
+                      }
+                    }}
+                  >
+                    <option value="">-- Selecciona una competencia --</option>
+                    {competencyBankOptions.map((bankComp) => (
+                      <option key={bankComp.id} value={bankComp.id}>{bankComp.name}</option>
+                    ))}
+                    <option value="custom">✏️ Crear competencia personalizada...</option>
+                  </select>
                 </div>
+                {isCustomCompetency && (
+                  <div className="field">
+                    <label>Nombre de Competencia Personalizada</label>
+                    <input className="input" name="custom_name" required placeholder="Ej: Liderazgo" />
+                  </div>
+                )}
                 <div className="field">
                   <label>Descripcion</label>
-                  <textarea className="textarea" name="description" />
+                  <textarea 
+                    className="textarea" 
+                    name="description" 
+                    value={prefilledDesc} 
+                    onChange={(e) => setPrefilledDesc(e.target.value)} 
+                    placeholder="Describe los comportamientos clave de esta competencia..."
+                  />
                 </div>
                 <div className="field">
                   <label>Peso (%)</label>
