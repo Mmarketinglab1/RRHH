@@ -98,7 +98,7 @@ export default function EvaluationDetail() {
   const [consultantLogoUrl, setConsultantLogoUrl] = useState<string>("");
   const [thHigh, setThHigh] = useState<number>(8.5);
   const [thMed, setThMed] = useState<number>(7.0);
-  const [companyName, setCompanyName] = useState<string>("MSD");
+  const [companyName, setCompanyName] = useState<string>("");
   const [consultantName, setConsultantName] = useState<string>("abc&co");
   const [coverTitle1, setCoverTitle1] = useState<string>("REPORTE DE");
   const [coverTitle2, setCoverTitle2] = useState<string>("EVALUACIÓN");
@@ -115,6 +115,7 @@ export default function EvaluationDetail() {
   const [showPicosAlert, setShowPicosAlert] = useState<boolean>(true);
   const [showInsightsSection, setShowInsightsSection] = useState<boolean>(true);
   const [showRankingTable, setShowRankingTable] = useState<boolean>(true);
+  const [showExecutiveTab, setShowExecutiveTab] = useState<boolean>(true);
 
   useEffect(() => {
     if (evaluation) {
@@ -125,13 +126,14 @@ export default function EvaluationDetail() {
         setThMed(Number(evaluation.score_thresholds.medium) || 7.0);
       }
       const cfg = evaluation.report_config || {};
-      setCompanyName(cfg.company_name || evaluation.title || "MSD");
+      const cName = cfg.company_name || evaluation.title || "Empresa";
+      setCompanyName(cName);
       setConsultantName(cfg.consultant_name || "abc&co");
       setCoverTitle1(cfg.cover_title_1 || "REPORTE DE");
       setCoverTitle2(cfg.cover_title_2 || "EVALUACIÓN");
       setCoverTitle3(cfg.cover_title_3 || "360°");
       setCoverSub1(cfg.cover_subtitle_1 || "REPORTE GRUPAL");
-      setCoverSub2(cfg.cover_subtitle_2 || `Fuerza de ventas ${cfg.company_name || evaluation.title || "MSD"}`);
+      setCoverSub2(cfg.cover_subtitle_2 || `Fuerza de ventas ${cName}`);
       setHeaderTitle(cfg.header_title || "Reporte Grupal - Evaluación 360°");
       setIntroP1(cfg.intro_p1 || "");
       setIntroP2(cfg.intro_p2 || "");
@@ -142,6 +144,7 @@ export default function EvaluationDetail() {
       if (cfg.show_picos_alert !== undefined) setShowPicosAlert(cfg.show_picos_alert);
       if (cfg.show_insights_section !== undefined) setShowInsightsSection(cfg.show_insights_section);
       if (cfg.show_ranking_table !== undefined) setShowRankingTable(cfg.show_ranking_table);
+      if (cfg.show_executive_tab !== undefined) setShowExecutiveTab(cfg.show_executive_tab);
     }
   }, [evaluation]);
 
@@ -193,6 +196,7 @@ export default function EvaluationDetail() {
           show_picos_alert: showPicosAlert,
           show_insights_section: showInsightsSection,
           show_ranking_table: showRankingTable,
+          show_executive_tab: showExecutiveTab,
         },
       };
 
@@ -233,7 +237,7 @@ export default function EvaluationDetail() {
     try {
       await downloadFile(
         `/evaluations/${evaluationId}/results/executive/pdf`,
-        `Reporte_Ejecutivo_360_${evaluation?.title?.replace(/\s+/g, "_") || "MSD"}.pdf`,
+        `Reporte_Ejecutivo_360_${evaluation?.title?.replace(/\s+/g, "_") || "Empresa"}.pdf`,
         token
       );
     } catch (err: any) {
@@ -2153,23 +2157,25 @@ export default function EvaluationDetail() {
                 >
                   👤 Por Colaborador
                 </button>
-                <button
-                  type="button"
-                  className={`toggle-btn ${resultsSubTab === "executive" ? "active" : ""}`}
-                  onClick={() => {
-                    setResultsSubTab("executive");
-                    if (!executiveResults) void loadExecutiveReport();
-                  }}
-                  style={{
-                    padding: "6px 14px",
-                    fontSize: "0.85rem",
-                    fontWeight: "bold",
-                    background: resultsSubTab === "executive" ? "#00857c" : undefined,
-                    color: resultsSubTab === "executive" ? "#ffffff" : undefined,
-                  }}
-                >
-                  📑 Reporte Ejecutivo 360° (MSD 29P)
-                </button>
+                {showExecutiveTab && (
+                  <button
+                    type="button"
+                    className={`toggle-btn ${resultsSubTab === "executive" ? "active" : ""}`}
+                    onClick={() => {
+                      setResultsSubTab("executive");
+                      if (!executiveResults) void loadExecutiveReport();
+                    }}
+                    style={{
+                      padding: "6px 14px",
+                      fontSize: "0.85rem",
+                      fontWeight: "bold",
+                      background: resultsSubTab === "executive" ? "#00857c" : undefined,
+                      color: resultsSubTab === "executive" ? "#ffffff" : undefined,
+                    }}
+                  >
+                    📑 Reporte Ejecutivo 360°
+                  </button>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -2216,31 +2222,33 @@ export default function EvaluationDetail() {
                   Configurar Informe
                 </button>
 
-                <button
-                  type="button"
-                  className="button primary"
-                  onClick={handleDownloadExecutivePdf}
-                  disabled={downloadingExecutivePdf}
-                  style={{
-                    height: 36,
-                    fontSize: "0.82rem",
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "0 12px",
-                    background: "#00857c",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "8px",
-                    boxShadow: "0 2px 4px rgba(0,133,124,0.2)",
-                    cursor: "pointer",
-                  }}
-                  title="Descargar Reporte Ejecutivo Oficial de 29 páginas idéntico al formato original"
-                >
-                  <FileText size={15} />
-                  {downloadingExecutivePdf ? "Generando 29 Págs..." : "Reporte Ejecutivo (PDF 29P)"}
-                </button>
+                {showExecutiveTab && (
+                  <button
+                    type="button"
+                    className="button primary"
+                    onClick={handleDownloadExecutivePdf}
+                    disabled={downloadingExecutivePdf}
+                    style={{
+                      height: 36,
+                      fontSize: "0.82rem",
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "0 12px",
+                      background: "#00857c",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "8px",
+                      boxShadow: "0 2px 4px rgba(0,133,124,0.2)",
+                      cursor: "pointer",
+                    }}
+                    title="Descargar Reporte Ejecutivo Oficial de 29 páginas"
+                  >
+                    <FileText size={15} />
+                    {downloadingExecutivePdf ? "Generando 29 Págs..." : "Reporte Ejecutivo (PDF 29P)"}
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -2710,7 +2718,7 @@ export default function EvaluationDetail() {
                         {evaluation?.report_config?.cover_title_1 || "Reporte de"}{" "}
                         {evaluation?.report_config?.cover_title_2 || "Evaluación"}{" "}
                         {evaluation?.report_config?.cover_title_3 || "360°"} -{" "}
-                        {evaluation?.report_config?.company_name || evaluation?.title || "MSD"}
+                        {evaluation?.report_config?.company_name || evaluation?.title || "Empresa"}
                       </h2>
                       <p style={{ margin: 0, fontSize: "0.88rem", opacity: 0.9, maxWidth: 640 }}>
                         {evaluation?.report_config?.cover_subtitle_2 || "Fuerza de Ventas"} • {evaluation?.report_config?.header_title || "Reporte Grupal - Evaluación 360°"} (Formato corporativo 29 páginas)
@@ -3180,7 +3188,7 @@ export default function EvaluationDetail() {
                           <img src={clientLogoUrl} alt="Preview Cliente" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                         ) : (
                           <span style={{ fontSize: "0.72rem", color: "#94a3b8", textAlign: "center" }}>
-                            Isotipo Vectorial MSD (Predeterminado)
+                            Isotipo Vectorial (Predeterminado)
                           </span>
                         )}
                       </div>
@@ -3318,7 +3326,7 @@ export default function EvaluationDetail() {
                         className="input"
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
-                        placeholder="Ej. MSD Argentina"
+                        placeholder="Ej. Nombre de la Empresa o Cliente"
                         style={{ width: "100%", fontSize: "0.85rem" }}
                       />
                     </div>
@@ -3610,6 +3618,19 @@ export default function EvaluationDetail() {
                     <div>
                       <strong style={{ fontSize: "0.85rem", display: "block" }}>Tabla de Ranking Individual y Desempeño Histórico</strong>
                       <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Muestra la matriz completa con colores de semáforo para cada colaborador.</span>
+                    </div>
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: "#f8fafc", padding: "12px 14px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                    <input
+                      type="checkbox"
+                      checked={showExecutiveTab}
+                      onChange={(e) => setShowExecutiveTab(e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: "0.85rem", display: "block" }}>Pestaña de Reporte Ejecutivo 360° (Formato Corporativo 29P)</strong>
+                      <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Habilita la pestaña ejecutiva y el botón de descarga del informe corporativo.</span>
                     </div>
                   </label>
                 </div>

@@ -638,7 +638,7 @@ def _parse_logo_image(logo_str: str | None):
 class MSDExecutiveCanvas(canvas.Canvas):
     client_logo_reader = None
     consultant_logo_reader = None
-    cfg_company_name = "MSD"
+    cfg_company_name = "Empresa"
     cfg_consultant_name = "abc&co"
     cfg_header_title = "Reporte Grupal - Evaluación 360°"
 
@@ -679,7 +679,7 @@ class MSDExecutiveCanvas(canvas.Canvas):
         self.circle(56, height - 58, 10, fill=1, stroke=0)
         self.circle(56, height - 82, 10, fill=1, stroke=0)
         self.setFont("Helvetica-Bold", 24)
-        cname = getattr(self, "cfg_company_name", "MSD") or "MSD"
+        cname = getattr(self, "cfg_company_name", "Empresa") or "Empresa"
         self.drawString(85, height - 78, cname)
 
     def _draw_header_client_logo(self, height):
@@ -703,7 +703,7 @@ class MSDExecutiveCanvas(canvas.Canvas):
         self.circle(47, height - 25, 5, fill=1, stroke=0)
         self.circle(47, height - 39, 5, fill=1, stroke=0)
         self.setFont("Helvetica-Bold", 12)
-        cname = getattr(self, "cfg_company_name", "MSD") or "MSD"
+        cname = getattr(self, "cfg_company_name", "Empresa") or "Empresa"
         self.drawString(62, height - 36, cname)
 
     def _draw_footer_consultant_logo(self, width):
@@ -807,7 +807,7 @@ class MSDExecutiveCanvas(canvas.Canvas):
         self.restoreState()
 
 
-def make_executive_canvas(client_logo=None, consultant_logo=None, company_name="MSD", consultant_name="abc&co", header_title="Reporte Grupal - Evaluación 360°"):
+def make_executive_canvas(client_logo=None, consultant_logo=None, company_name="Empresa", consultant_name="abc&co", header_title="Reporte Grupal - Evaluación 360°"):
     c_reader = _parse_logo_image(client_logo)
     cons_reader = _parse_logo_image(consultant_logo)
 
@@ -952,7 +952,7 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
     story = []
 
     cfg = results.report_config or {}
-    company_name = cfg.get("company_name") or results.company_name or "MSD"
+    company_name = cfg.get("company_name") or results.company_name or "Empresa"
     consultant_name = cfg.get("consultant_name") or "abc&co"
     header_title = cfg.get("header_title") or "Reporte Grupal - Evaluación 360°"
 
@@ -1250,7 +1250,7 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
     # PÁGINA 16: GRÁFICAS DE DISPERSIÓN POR COMPETENCIA (NETO) - C1 Y C2
     # =========================================================================
     story.append(Paragraph("Gráficas de dispersión por Competencia", ParagraphStyle("GTit", parent=sty["section_title"], spaceAfter=4)))
-    story.append(Paragraph("La fuerza de ventas de MSD muestra un perfil de alto desempeño y estabilidad, con una fortaleza clara en adaptabilidad y ejecución. La principal oportunidad de desarrollo está en Análisis digital y de datos, no por bajo desempeño crítico, sino por mayor dispersión y menor promedio relativo frente a las demás competencias.", ParagraphStyle("GBod", parent=sty["body"], spaceAfter=4)))
+    story.append(Paragraph(f"La fuerza de ventas de {company_name} muestra un perfil de alto desempeño y estabilidad, con una fortaleza clara en adaptabilidad y ejecución. La principal oportunidad de desarrollo está en Análisis digital y de datos, no por bajo desempeño crítico, sino por mayor dispersión y menor promedio relativo frente a las demás competencias.", ParagraphStyle("GBod", parent=sty["body"], spaceAfter=4)))
 
     pts_c1 = [(pt.index, pt.net_score) for pt in results.scatter_data.get(c1_name, [])]
     img_sc1 = generate_scatter_plot(c1_name, pts_c1, results.competencies[0].net_median if len(results.competencies) > 0 else 8.91, width_inches=6.8, height_inches=3.0)
