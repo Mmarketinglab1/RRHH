@@ -21,12 +21,27 @@ def run_auto_migrations():
             )
             conn.execute(
                 text(
-                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS client_logo_url VARCHAR(500);"
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS client_logo_url TEXT;"
                 )
             )
             conn.execute(
                 text(
-                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS consultant_logo_url VARCHAR(500);"
+                    "ALTER TABLE evaluations ALTER COLUMN client_logo_url TYPE TEXT;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS consultant_logo_url TEXT;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ALTER COLUMN consultant_logo_url TYPE TEXT;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS report_config JSONB DEFAULT '{}'::jsonb;"
                 )
             )
             conn.execute(

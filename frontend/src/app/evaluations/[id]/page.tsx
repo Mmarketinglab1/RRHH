@@ -22,6 +22,10 @@ import {
   Download,
   FileText,
   FileArchive,
+  Settings,
+  Upload,
+  Image as ImageIcon,
+  Sliders,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -85,6 +89,131 @@ export default function EvaluationDetail() {
   const [downloadingExecutivePdf, setDownloadingExecutivePdf] = useState(false);
   const [executiveResults, setExecutiveResults] = useState<ExecutiveReportResults | null>(null);
   const [loadingExecutive, setLoadingExecutive] = useState(false);
+
+  const [showReportConfigModal, setShowReportConfigModal] = useState(false);
+  const [savingReportConfig, setSavingReportConfig] = useState(false);
+  const [configTab, setConfigTab] = useState<'branding' | 'content' | 'thresholds' | 'display'>('branding');
+
+  const [clientLogoUrl, setClientLogoUrl] = useState<string>("");
+  const [consultantLogoUrl, setConsultantLogoUrl] = useState<string>("");
+  const [thHigh, setThHigh] = useState<number>(8.5);
+  const [thMed, setThMed] = useState<number>(7.0);
+  const [companyName, setCompanyName] = useState<string>("MSD");
+  const [consultantName, setConsultantName] = useState<string>("abc&co");
+  const [coverTitle1, setCoverTitle1] = useState<string>("REPORTE DE");
+  const [coverTitle2, setCoverTitle2] = useState<string>("EVALUACIÓN");
+  const [coverTitle3, setCoverTitle3] = useState<string>("360°");
+  const [coverSub1, setCoverSub1] = useState<string>("REPORTE GRUPAL");
+  const [coverSub2, setCoverSub2] = useState<string>("Fuerza de ventas");
+  const [headerTitle, setHeaderTitle] = useState<string>("Reporte Grupal - Evaluación 360°");
+  const [introP1, setIntroP1] = useState<string>("");
+  const [introP2, setIntroP2] = useState<string>("");
+  const [objectivesMain, setObjectivesMain] = useState<string>("");
+  const [labelHigh, setLabelHigh] = useState<string>("Excede expectativas");
+  const [labelMed, setLabelMed] = useState<string>("Cumple expectativas");
+  const [labelLow, setLabelLow] = useState<string>("Necesita mejora");
+  const [showPicosAlert, setShowPicosAlert] = useState<boolean>(true);
+  const [showInsightsSection, setShowInsightsSection] = useState<boolean>(true);
+  const [showRankingTable, setShowRankingTable] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (evaluation) {
+      setClientLogoUrl(evaluation.client_logo_url || "");
+      setConsultantLogoUrl(evaluation.consultant_logo_url || "");
+      if (evaluation.score_thresholds) {
+        setThHigh(Number(evaluation.score_thresholds.high) || 8.5);
+        setThMed(Number(evaluation.score_thresholds.medium) || 7.0);
+      }
+      const cfg = evaluation.report_config || {};
+      setCompanyName(cfg.company_name || evaluation.title || "MSD");
+      setConsultantName(cfg.consultant_name || "abc&co");
+      setCoverTitle1(cfg.cover_title_1 || "REPORTE DE");
+      setCoverTitle2(cfg.cover_title_2 || "EVALUACIÓN");
+      setCoverTitle3(cfg.cover_title_3 || "360°");
+      setCoverSub1(cfg.cover_subtitle_1 || "REPORTE GRUPAL");
+      setCoverSub2(cfg.cover_subtitle_2 || `Fuerza de ventas ${cfg.company_name || evaluation.title || "MSD"}`);
+      setHeaderTitle(cfg.header_title || "Reporte Grupal - Evaluación 360°");
+      setIntroP1(cfg.intro_p1 || "");
+      setIntroP2(cfg.intro_p2 || "");
+      setObjectivesMain(cfg.objectives_main || "");
+      setLabelHigh(cfg.label_high || "Excede expectativas");
+      setLabelMed(cfg.label_med || "Cumple expectativas");
+      setLabelLow(cfg.label_low || "Necesita mejora");
+      if (cfg.show_picos_alert !== undefined) setShowPicosAlert(cfg.show_picos_alert);
+      if (cfg.show_insights_section !== undefined) setShowInsightsSection(cfg.show_insights_section);
+      if (cfg.show_ranking_table !== undefined) setShowRankingTable(cfg.show_ranking_table);
+    }
+  }, [evaluation]);
+
+  function handleLogoFileUpload(e: React.ChangeEvent<HTMLInputElement>, target: 'client' | 'consultant') {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("La imagen no debe superar los 5MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      if (target === 'client') {
+        setClientLogoUrl(result);
+      } else {
+        setConsultantLogoUrl(result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSaveReportConfig() {
+    if (!token || !evaluationId) return;
+    setSavingReportConfig(true);
+    try {
+      const payload = {
+        client_logo_url: clientLogoUrl || null,
+        consultant_logo_url: consultantLogoUrl || null,
+        score_thresholds: {
+          high: Number(thHigh) || 8.5,
+          medium: Number(thMed) || 7.0,
+        },
+        report_config: {
+          company_name: companyName,
+          consultant_name: consultantName,
+          cover_title_1: coverTitle1,
+          cover_title_2: coverTitle2,
+          cover_title_3: coverTitle3,
+          cover_subtitle_1: coverSub1,
+          cover_subtitle_2: coverSub2,
+          header_title: headerTitle,
+          intro_p1: introP1,
+          intro_p2: introP2,
+          objectives_main: objectivesMain,
+          label_high: labelHigh,
+          label_med: labelMed,
+          label_low: labelLow,
+          show_picos_alert: showPicosAlert,
+          show_insights_section: showInsightsSection,
+          show_ranking_table: showRankingTable,
+        },
+      };
+
+      const updated = await api<Evaluation>(
+        `/evaluations/${evaluationId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        },
+        token
+      );
+      setEvaluation(updated);
+      setShowReportConfigModal(false);
+      setMessage("Configuración del informe guardada correctamente.");
+      await loadExecutiveReport(token);
+    } catch (err: any) {
+      alert(`Error al guardar configuración: ${err.message}`);
+    } finally {
+      setSavingReportConfig(false);
+    }
+  }
 
   async function handleDownloadGeneralPdf() {
     if (!token || !evaluationId) return;
@@ -2065,6 +2194,30 @@ export default function EvaluationDetail() {
 
                 <button
                   type="button"
+                  className="button secondary"
+                  onClick={() => setShowReportConfigModal(true)}
+                  style={{
+                    height: 36,
+                    fontSize: "0.82rem",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "0 12px",
+                    border: "1px solid #00857c",
+                    color: "#00857c",
+                    background: "rgba(0,133,124,0.06)",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                  }}
+                  title="Configurar logotipos corporativos, títulos, narrativa y umbrales semafóricos"
+                >
+                  <Settings size={15} />
+                  Configurar Informe
+                </button>
+
+                <button
+                  type="button"
                   className="button primary"
                   onClick={handleDownloadExecutivePdf}
                   disabled={downloadingExecutivePdf}
@@ -2118,7 +2271,7 @@ export default function EvaluationDetail() {
 
             {resultsSubTab === "general" && (
               <>
-                {results?.outliers && results.outliers.length > 0 && (
+                {results?.outliers && results.outliers.length > 0 && (evaluation?.report_config?.show_picos_alert !== false) && (
                   <div className="panel" style={{ background: "#fff8e6", border: "1px solid #ffe58f", borderRadius: 12, padding: "16px 20px", marginBottom: 18 }}>
                     <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem", color: "#b78103", display: "flex", alignItems: "center", gap: 8 }}>
                       ⚠️ Alertas de Picos en Evaluaciones ({results.outliers.length})
@@ -2494,29 +2647,100 @@ export default function EvaluationDetail() {
                     gap: 16,
                   }}
                 >
-                  <div>
-                    <span
-                      style={{
-                        background: "rgba(255,255,255,0.2)",
-                        color: "#fff",
-                        padding: "3px 10px",
-                        borderRadius: "20px",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                      }}
-                    >
-                      Reporte Oficial de Alta Dirección
-                    </span>
-                    <h2 style={{ fontSize: "1.45rem", fontWeight: 800, margin: "10px 0 6px 0", color: "#fff" }}>
-                      Reporte de Evaluación 360° - Fuerza de Ventas
-                    </h2>
-                    <p style={{ margin: 0, fontSize: "0.88rem", opacity: 0.9, maxWidth: 640 }}>
-                      Generación automatizada de 29 páginas idéntica al formato corporativo original (MSD & abc&co Coaching / Consulting) con análisis de 4 competencias ponderadas, 33 reactivos, matrices de desempeño 2023-2025 y gráficos de dispersión por línea.
-                    </p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+                    {evaluation?.client_logo_url && (
+                      <div
+                        style={{
+                          background: "#ffffff",
+                          padding: "6px 12px",
+                          borderRadius: "10px",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          maxHeight: 58,
+                        }}
+                      >
+                        <img
+                          src={evaluation.client_logo_url}
+                          alt="Logo Cliente"
+                          style={{ maxHeight: 42, maxWidth: 130, objectFit: "contain" }}
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            background: "rgba(255,255,255,0.2)",
+                            color: "#fff",
+                            padding: "3px 10px",
+                            borderRadius: "20px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          Reporte Oficial de Alta Dirección
+                        </span>
+                        {evaluation?.consultant_logo_url && (
+                          <span
+                            style={{
+                              background: "rgba(255,255,255,0.15)",
+                              color: "#fff",
+                              padding: "2px 8px",
+                              borderRadius: "12px",
+                              fontSize: "0.72rem",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <span>Consultora:</span>
+                            <img
+                              src={evaluation.consultant_logo_url}
+                              alt="Logo Consultor"
+                              style={{ maxHeight: 18, maxWidth: 65, objectFit: "contain", verticalAlign: "middle" }}
+                            />
+                          </span>
+                        )}
+                      </div>
+                      <h2 style={{ fontSize: "1.45rem", fontWeight: 800, margin: "10px 0 6px 0", color: "#fff" }}>
+                        {evaluation?.report_config?.cover_title_1 || "Reporte de"}{" "}
+                        {evaluation?.report_config?.cover_title_2 || "Evaluación"}{" "}
+                        {evaluation?.report_config?.cover_title_3 || "360°"} -{" "}
+                        {evaluation?.report_config?.company_name || evaluation?.title || "MSD"}
+                      </h2>
+                      <p style={{ margin: 0, fontSize: "0.88rem", opacity: 0.9, maxWidth: 640 }}>
+                        {evaluation?.report_config?.cover_subtitle_2 || "Fuerza de Ventas"} • {evaluation?.report_config?.header_title || "Reporte Grupal - Evaluación 360°"} (Formato corporativo 29 páginas)
+                      </p>
+                    </div>
                   </div>
-                  <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowReportConfigModal(true)}
+                      style={{
+                        background: "rgba(255,255,255,0.18)",
+                        color: "#ffffff",
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        padding: "10px 16px",
+                        borderRadius: "10px",
+                        border: "1px solid rgba(255,255,255,0.4)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        backdropFilter: "blur(4px)",
+                      }}
+                      title="Configurar logotipos corporativos, textos y umbrales semafóricos"
+                    >
+                      <Settings size={16} />
+                      Configurar Informe
+                    </button>
+
                     <button
                       type="button"
                       className="button"
@@ -2526,8 +2750,8 @@ export default function EvaluationDetail() {
                         background: "#ffffff",
                         color: "#00857c",
                         fontWeight: 800,
-                        fontSize: "0.95rem",
-                        padding: "12px 22px",
+                        fontSize: "0.92rem",
+                        padding: "10px 20px",
                         borderRadius: "10px",
                         boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                         border: "none",
@@ -2538,7 +2762,7 @@ export default function EvaluationDetail() {
                       }}
                     >
                       <Download size={18} />
-                      {downloadingExecutivePdf ? "Generando 29 Páginas..." : "Descargar Reporte Ejecutivo (PDF 29P)"}
+                      {downloadingExecutivePdf ? "Generando 29 Págs..." : "Descargar PDF (29P)"}
                     </button>
                   </div>
                 </div>
@@ -2638,7 +2862,7 @@ export default function EvaluationDetail() {
                     </div>
 
                     {/* Principales Hallazgos (Insights) */}
-                    {executiveResults.insights && (
+                    {executiveResults.insights && (evaluation?.report_config?.show_insights_section !== false) && (
                       <div className="panel" style={{ padding: "20px 24px" }}>
                         <h3 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: 12 }}>
                           Principales Hallazgos y Análisis Estratégico
@@ -2652,101 +2876,104 @@ export default function EvaluationDetail() {
                     )}
 
                     {/* Matriz de Ranking Individual (Vista previa de las 44 filas) */}
-                    <div className="panel" style={{ padding: "20px 24px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-                        <div>
-                          <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0 }}>
-                            Ranking Individual y Desempeño Histórico (2023-2025)
-                          </h3>
-                          <span className="muted" style={{ fontSize: "0.75rem" }}>
-                            Escala de semáforo: Verde (≥ 8.5 Excede), Amarillo (7.0 - 8.4 Cumple), Rojo (≤ 6.9 Requiere mejora)
-                          </span>
+                    {(evaluation?.report_config?.show_ranking_table !== false) && (
+                      <div className="panel" style={{ padding: "20px 24px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                          <div>
+                            <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0 }}>
+                              Ranking Individual y Desempeño Histórico (2023-2025)
+                            </h3>
+                            <span className="muted" style={{ fontSize: "0.75rem" }}>
+                              Escala de semáforo: Verde (≥ {Number(executiveResults.thresholds?.high ?? 8.5).toFixed(1)} {evaluation?.report_config?.label_high || "Excede"}), Amarillo ({Number(executiveResults.thresholds?.medium ?? 7.0).toFixed(1)} - {(Number(executiveResults.thresholds?.high ?? 8.5) - 0.1).toFixed(1)} {evaluation?.report_config?.label_med || "Cumple"}), Rojo (≤ {(Number(executiveResults.thresholds?.medium ?? 7.0) - 0.1).toFixed(1)} {evaluation?.report_config?.label_low || "Requiere mejora"})
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", gap: 10, fontSize: "0.75rem" }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ width: 10, height: 10, background: "#dcfce7", border: "1px solid #16a34a", borderRadius: 2 }}></span>
+                              ≥ {Number(executiveResults.thresholds?.high ?? 8.5).toFixed(2)}
+                            </span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ width: 10, height: 10, background: "#fef9c3", border: "1px solid #ca8a04", borderRadius: 2 }}></span>
+                              {Number(executiveResults.thresholds?.medium ?? 7.0).toFixed(2)} - {(Number(executiveResults.thresholds?.high ?? 8.5) - 0.01).toFixed(2)}
+                            </span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ width: 10, height: 10, background: "#fee2e2", border: "1px solid #dc2626", borderRadius: 2 }}></span>
+                              ≤ {(Number(executiveResults.thresholds?.medium ?? 7.0) - 0.01).toFixed(2)}
+                            </span>
+                          </div>
                         </div>
-                        <div style={{ display: "flex", gap: 10, fontSize: "0.75rem" }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ width: 10, height: 10, background: "#dcfce7", border: "1px solid #16a34a", borderRadius: 2 }}></span>
-                            ≥ 8.50
-                          </span>
-                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ width: 10, height: 10, background: "#fef9c3", border: "1px solid #ca8a04", borderRadius: 2 }}></span>
-                            7.00 - 8.49
-                          </span>
-                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ width: 10, height: 10, background: "#fee2e2", border: "1px solid #dc2626", borderRadius: 2 }}></span>
-                            ≤ 6.99
-                          </span>
-                        </div>
-                      </div>
 
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
-                          <thead>
-                            <tr style={{ background: "#f1f5f9", textAlign: "left", borderBottom: "2px solid #cbd5e1" }}>
-                              <th style={{ padding: "8px 10px", width: 50 }}>#</th>
-                              <th style={{ padding: "8px 10px", width: 70 }}>Rol</th>
-                              <th style={{ padding: "8px 10px", width: 130 }}>Línea</th>
-                              <th style={{ padding: "8px 10px" }}>Colaborador</th>
-                              {executiveResults.competencies.map((c) => (
-                                <th key={c.competency_id} style={{ padding: "8px 8px", textAlign: "center", minWidth: 90 }}>
-                                  {c.competency_name.split(" ")[0]} ({c.weight_pct.toFixed(0)}%)
-                                </th>
-                              ))}
-                              <th style={{ padding: "8px 10px", textAlign: "center", minWidth: 70, background: "#e0f2fe" }}>Prom.</th>
-                              <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2023</th>
-                              <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2024</th>
-                              <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2025</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {executiveResults.participants_matrix.map((row, idx) => (
-                              <tr
-                                key={row.participant_id}
-                                style={{
-                                  borderBottom: "1px solid #e2e8f0",
-                                  background: idx % 2 === 0 ? "#ffffff" : "#f8fafc",
-                                }}
-                              >
-                                <td style={{ padding: "7px 10px", fontWeight: 700, color: "var(--muted)" }}>
-                                  {idx + 1}
-                                </td>
-                                <td style={{ padding: "7px 10px", color: "var(--muted)" }}>
-                                  {row.role || "SR"}
-                                </td>
-                                <td style={{ padding: "7px 10px", fontWeight: 600 }}>
-                                  {row.business_line || "General"}
-                                </td>
-                                <td style={{ padding: "7px 10px", fontWeight: 700 }}>
-                                  {row.participant_name}
-                                </td>
-                                {executiveResults.competencies.map((c) => {
-                                  const val = row.net_scores[c.competency_name] ?? 0;
-                                  let bg = "#ffffff";
-                                  let color = "#0f172a";
-                                  if (val >= 8.5) {
-                                    bg = "#dcfce7";
-                                    color = "#15803d";
-                                  } else if (val >= 7.0) {
-                                    bg = "#fef9c3";
-                                    color = "#854d0e";
-                                  } else if (val > 0) {
-                                    bg = "#fee2e2";
-                                    color = "#b91c1c";
-                                  }
-                                  return (
-                                    <td
-                                      key={c.competency_id}
-                                      style={{
-                                        padding: "7px 8px",
-                                        textAlign: "center",
-                                        background: bg,
-                                        color: color,
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      {val.toFixed(2)}
-                                    </td>
-                                  );
-                                })}
+                        <div style={{ overflowX: "auto" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                            <thead>
+                              <tr style={{ background: "#f1f5f9", textAlign: "left", borderBottom: "2px solid #cbd5e1" }}>
+                                <th style={{ padding: "8px 10px", width: 50 }}>#</th>
+                                <th style={{ padding: "8px 10px", width: 70 }}>Rol</th>
+                                <th style={{ padding: "8px 10px", width: 130 }}>Línea</th>
+                                <th style={{ padding: "8px 10px" }}>Colaborador</th>
+                                {executiveResults.competencies.map((c) => (
+                                  <th key={c.competency_id} style={{ padding: "8px 8px", textAlign: "center", minWidth: 90 }}>
+                                    {c.competency_name.split(" ")[0]} ({c.weight_pct.toFixed(0)}%)
+                                  </th>
+                                ))}
+                                <th style={{ padding: "8px 10px", textAlign: "center", minWidth: 70, background: "#e0f2fe" }}>Prom.</th>
+                                <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2023</th>
+                                <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2024</th>
+                                <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2025</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {executiveResults.participants_matrix.map((row, idx) => (
+                                <tr
+                                  key={row.participant_id}
+                                  style={{
+                                    borderBottom: "1px solid #e2e8f0",
+                                    background: idx % 2 === 0 ? "#ffffff" : "#f8fafc",
+                                  }}
+                                >
+                                  <td style={{ padding: "7px 10px", fontWeight: 700, color: "var(--muted)" }}>
+                                    {idx + 1}
+                                  </td>
+                                  <td style={{ padding: "7px 10px", color: "var(--muted)" }}>
+                                    {row.role || "SR"}
+                                  </td>
+                                  <td style={{ padding: "7px 10px", fontWeight: 600 }}>
+                                    {row.business_line || "General"}
+                                  </td>
+                                  <td style={{ padding: "7px 10px", fontWeight: 700 }}>
+                                    {row.participant_name}
+                                  </td>
+                                  {executiveResults.competencies.map((c) => {
+                                    const val = row.net_scores[c.competency_name] ?? 0;
+                                    const thH = Number(executiveResults.thresholds?.high ?? 8.5);
+                                    const thM = Number(executiveResults.thresholds?.medium ?? 7.0);
+                                    let bg = "#ffffff";
+                                    let color = "#0f172a";
+                                    if (val >= thH) {
+                                      bg = "#dcfce7";
+                                      color = "#15803d";
+                                    } else if (val >= thM) {
+                                      bg = "#fef9c3";
+                                      color = "#854d0e";
+                                    } else if (val > 0) {
+                                      bg = "#fee2e2";
+                                      color = "#b91c1c";
+                                    }
+                                    return (
+                                      <td
+                                        key={c.competency_id}
+                                        style={{
+                                          padding: "7px 8px",
+                                          textAlign: "center",
+                                          background: bg,
+                                          color: color,
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {val.toFixed(2)}
+                                      </td>
+                                    );
+                                  })}
                                 <td
                                   style={{
                                     padding: "7px 10px",
@@ -2780,6 +3007,658 @@ export default function EvaluationDetail() {
           </div>
         )}
       </section>
+      {showReportConfigModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.7)",
+            backdropFilter: "blur(6px)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "840px",
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "20px 24px",
+                borderBottom: "1px solid #e2e8f0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "10px",
+                    background: "rgba(0,133,124,0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#00857c",
+                  }}
+                >
+                  <Settings size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800, color: "#0f172a" }}>
+                    Configuración del Informe Ejecutivo & Salida
+                  </h3>
+                  <p style={{ margin: 0, fontSize: "0.8rem", color: "#64748b" }}>
+                    Personaliza logotipos, nombres institucionales, textos de introducción y umbrales de semáforo para pantalla y PDF.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReportConfigModal(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#64748b",
+                  padding: 6,
+                  borderRadius: 6,
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Navigation Tabs */}
+            <div
+              style={{
+                display: "flex",
+                borderBottom: "1px solid #e2e8f0",
+                background: "#ffffff",
+                padding: "0 24px",
+                gap: 8,
+              }}
+            >
+              {[
+                { id: "branding", label: "Logotipos y Marca", icon: <ImageIcon size={16} /> },
+                { id: "content", label: "Títulos y Textos", icon: <FileText size={16} /> },
+                { id: "thresholds", label: "Semáforo y Umbrales", icon: <Sliders size={16} /> },
+                { id: "display", label: "Salida en Pantalla", icon: <LayoutGrid size={16} /> },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setConfigTab(tab.id as any)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "12px 16px",
+                    fontSize: "0.85rem",
+                    fontWeight: 700,
+                    background: "none",
+                    border: "none",
+                    borderBottom: configTab === tab.id ? "3px solid #00857c" : "3px solid transparent",
+                    color: configTab === tab.id ? "#00857c" : "#64748b",
+                    cursor: "pointer",
+                  }}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+              {configTab === "branding" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                  {/* Logo Cliente */}
+                  <div style={{ background: "#f8fafc", padding: "18px 20px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700, color: "#0f172a" }}>
+                          Logo del Cliente / Empresa Evaluada
+                        </h4>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                          Aparece en la portada principal y en la esquina superior izquierda de todas las páginas del reporte PDF y en la pantalla.
+                        </p>
+                      </div>
+                      {clientLogoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setClientLogoUrl("")}
+                          style={{
+                            background: "#fee2e2",
+                            color: "#dc2626",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "4px 10px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Quitar Logo (Usar predeterminado)
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          width: 160,
+                          height: 80,
+                          borderRadius: "8px",
+                          border: "2px dashed #cbd5e1",
+                          background: "#ffffff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          padding: 6,
+                        }}
+                      >
+                        {clientLogoUrl ? (
+                          <img src={clientLogoUrl} alt="Preview Cliente" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                        ) : (
+                          <span style={{ fontSize: "0.72rem", color: "#94a3b8", textAlign: "center" }}>
+                            Isotipo Vectorial MSD (Predeterminado)
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            background: "#00857c",
+                            color: "#ffffff",
+                            padding: "8px 14px",
+                            borderRadius: "8px",
+                            fontSize: "0.82rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            width: "fit-content",
+                          }}
+                        >
+                          <Upload size={16} />
+                          Subir Imagen de Logo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={(e) => handleLogoFileUpload(e, "client")}
+                          />
+                        </label>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                          Formatos recomendados: PNG o JPG con fondo transparente o blanco (máx. 5 MB).
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Logo Consultora */}
+                  <div style={{ background: "#f8fafc", padding: "18px 20px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700, color: "#0f172a" }}>
+                          Logo de la Consultora / RRHH Emisor
+                        </h4>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                          Aparece en el pie de página inferior derecho de cada página del PDF y en el encabezado corporativo.
+                        </p>
+                      </div>
+                      {consultantLogoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setConsultantLogoUrl("")}
+                          style={{
+                            background: "#fee2e2",
+                            color: "#dc2626",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "4px 10px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Quitar Logo (Usar predeterminado)
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          width: 160,
+                          height: 80,
+                          borderRadius: "8px",
+                          border: "2px dashed #cbd5e1",
+                          background: "#ffffff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          padding: 6,
+                        }}
+                      >
+                        {consultantLogoUrl ? (
+                          <img src={consultantLogoUrl} alt="Preview Consultor" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                        ) : (
+                          <span style={{ fontSize: "0.72rem", color: "#94a3b8", textAlign: "center" }}>
+                            abc&co (Predeterminado)
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            background: "#475569",
+                            color: "#ffffff",
+                            padding: "8px 14px",
+                            borderRadius: "8px",
+                            fontSize: "0.82rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            width: "fit-content",
+                          }}
+                        >
+                          <Upload size={16} />
+                          Subir Imagen de Logo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={(e) => handleLogoFileUpload(e, "consultant")}
+                          />
+                        </label>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                          Formatos recomendados: PNG horizontal o JPG (máx. 5 MB).
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {configTab === "content" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <div>
+                      <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: 4 }}>
+                        Nombre de la Empresa Cliente:
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="Ej. MSD Argentina"
+                        style={{ width: "100%", fontSize: "0.85rem" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: 4 }}>
+                        Nombre de la Consultora:
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        value={consultantName}
+                        onChange={(e) => setConsultantName(e.target.value)}
+                        placeholder="Ej. abc&co - Coaching & Consulting"
+                        style={{ width: "100%", fontSize: "0.85rem" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: 4 }}>
+                      Título Superior de Encabezado (Header en páginas):
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={headerTitle}
+                      onChange={(e) => setHeaderTitle(e.target.value)}
+                      placeholder="Reporte Grupal - Evaluación 360°"
+                      style={{ width: "100%", fontSize: "0.85rem" }}
+                    />
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                    <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "#0f172a", display: "block", marginBottom: 10 }}>
+                      Portada (Página 1 del PDF)
+                    </span>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "#64748b", display: "block", marginBottom: 2 }}>Título L1</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={coverTitle1}
+                          onChange={(e) => setCoverTitle1(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "#64748b", display: "block", marginBottom: 2 }}>Título L2</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={coverTitle2}
+                          onChange={(e) => setCoverTitle2(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "#64748b", display: "block", marginBottom: 2 }}>Título L3 (Destacado)</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={coverTitle3}
+                          onChange={(e) => setCoverTitle3(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "#64748b", display: "block", marginBottom: 2 }}>Subtítulo L1</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={coverSub1}
+                          onChange={(e) => setCoverSub1(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.72rem", color: "#64748b", display: "block", marginBottom: 2 }}>Subtítulo L2 / Área</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={coverSub2}
+                          onChange={(e) => setCoverSub2(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: 4 }}>
+                      Introducción (Párrafo 1):
+                    </label>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      value={introP1}
+                      onChange={(e) => setIntroP1(e.target.value)}
+                      placeholder="En el contexto del proceso de transformación..."
+                      style={{ width: "100%", fontSize: "0.82rem", lineHeight: 1.4 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: 4 }}>
+                      Objetivo Principal del Reporte:
+                    </label>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      value={objectivesMain}
+                      onChange={(e) => setObjectivesMain(e.target.value)}
+                      placeholder="Evaluar el nivel de desarrollo y homogeneidad de las competencias..."
+                      style={{ width: "100%", fontSize: "0.82rem", lineHeight: 1.4 }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {configTab === "thresholds" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "14px 18px", borderRadius: "10px" }}>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>
+                      Semáforo de Rendimiento Corporativo (Escala 1 a 10)
+                    </span>
+                    <p style={{ margin: 0, fontSize: "0.78rem", color: "#15803d" }}>
+                      Ajuste los valores de corte numérico. Las celdas de las matrices en pantalla y en las 29 páginas del PDF se colorearán automáticamente según estos límites.
+                    </p>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+                    {/* Nivel Alto */}
+                    <div style={{ background: "#f8fafc", border: "2px solid #22c55e", padding: "16px", borderRadius: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#22c55e" }}></span>
+                        <span style={{ fontSize: "0.9rem", fontWeight: 800, color: "#15803d" }}>Nivel Alto (Verde)</span>
+                      </div>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: "0.75rem", color: "#64748b", display: "block", marginBottom: 3 }}>
+                          Puntaje Mínimo (≥)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          max="10"
+                          className="input"
+                          value={thHigh}
+                          onChange={(e) => setThHigh(parseFloat(e.target.value) || 0)}
+                          style={{ width: "100%", fontWeight: 700, fontSize: "1rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", color: "#64748b", display: "block", marginBottom: 3 }}>
+                          Etiqueta
+                        </label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={labelHigh}
+                          onChange={(e) => setLabelHigh(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Nivel Medio */}
+                    <div style={{ background: "#f8fafc", border: "2px solid #eab308", padding: "16px", borderRadius: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#eab308" }}></span>
+                        <span style={{ fontSize: "0.9rem", fontWeight: 800, color: "#854d0e" }}>Nivel Medio (Amarillo)</span>
+                      </div>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: "0.75rem", color: "#64748b", display: "block", marginBottom: 3 }}>
+                          Puntaje Mínimo (≥)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          max="10"
+                          className="input"
+                          value={thMed}
+                          onChange={(e) => setThMed(parseFloat(e.target.value) || 0)}
+                          style={{ width: "100%", fontWeight: 700, fontSize: "1rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", color: "#64748b", display: "block", marginBottom: 3 }}>
+                          Etiqueta
+                        </label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={labelMed}
+                          onChange={(e) => setLabelMed(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Nivel Bajo */}
+                    <div style={{ background: "#f8fafc", border: "2px solid #ef4444", padding: "16px", borderRadius: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#ef4444" }}></span>
+                        <span style={{ fontSize: "0.9rem", fontWeight: 800, color: "#b91c1c" }}>Nivel Bajo (Rojo)</span>
+                      </div>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: "0.75rem", color: "#64748b", display: "block", marginBottom: 3 }}>
+                          Rango Automático
+                        </label>
+                        <div
+                          style={{
+                            height: 38,
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "0 12px",
+                            background: "#fee2e2",
+                            color: "#b91c1c",
+                            borderRadius: 6,
+                            fontWeight: 700,
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          &lt; {thMed.toFixed(1)}
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", color: "#64748b", display: "block", marginBottom: 3 }}>
+                          Etiqueta
+                        </label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={labelLow}
+                          onChange={(e) => setLabelLow(e.target.value)}
+                          style={{ width: "100%", fontSize: "0.82rem" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {configTab === "display" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0f172a" }}>
+                    Secciones visibles en la vista de pantalla:
+                  </span>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: "#f8fafc", padding: "12px 14px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                    <input
+                      type="checkbox"
+                      checked={showPicosAlert}
+                      onChange={(e) => setShowPicosAlert(e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: "0.85rem", display: "block" }}>Alertas de Picos en Evaluaciones (Outliers)</strong>
+                      <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Muestra las advertencias cuando hay discrepancias significativas entre evaluadores.</span>
+                    </div>
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: "#f8fafc", padding: "12px 14px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                    <input
+                      type="checkbox"
+                      checked={showInsightsSection}
+                      onChange={(e) => setShowInsightsSection(e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: "0.85rem", display: "block" }}>Principales Hallazgos y Análisis Estratégico</strong>
+                      <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Muestra las viñetas analíticas automáticas sobre consistencia y dispersión.</span>
+                    </div>
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: "#f8fafc", padding: "12px 14px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                    <input
+                      type="checkbox"
+                      checked={showRankingTable}
+                      onChange={(e) => setShowRankingTable(e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: "0.85rem", display: "block" }}>Tabla de Ranking Individual y Desempeño Histórico</strong>
+                      <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Muestra la matriz completa con colores de semáforo para cada colaborador.</span>
+                    </div>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "16px 24px",
+                borderTop: "1px solid #e2e8f0",
+                background: "#f8fafc",
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowReportConfigModal(false)}
+                className="button secondary"
+                style={{ padding: "8px 16px", fontSize: "0.85rem" }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveReportConfig}
+                disabled={savingReportConfig}
+                className="button primary"
+                style={{
+                  background: "#00857c",
+                  color: "#ffffff",
+                  padding: "8px 20px",
+                  fontSize: "0.85rem",
+                  fontWeight: 800,
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Save size={16} />
+                {savingReportConfig ? "Guardando..." : "Guardar y Aplicar Configuración"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

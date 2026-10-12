@@ -771,4 +771,5 @@ def calculate_executive_report_results(
         business_lines=business_lines_results,
         scatter_data=scatter_data,
         insights=insights,
+        report_config=getattr(evaluation, "report_config", None) or {},
     )

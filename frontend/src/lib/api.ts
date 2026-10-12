@@ -7,6 +7,11 @@ export type Evaluation = {
   description: string | null;
   status: string;
   assessment_type?: string | null;
+  client_logo_url?: string | null;
+  consultant_logo_url?: string | null;
+  scale_type?: string | null;
+  score_thresholds?: { high: number; medium: number } | null;
+  report_config?: Record<string, any> | null;
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
@@ -216,6 +221,7 @@ export type ExecutiveReportResults = {
     summary_bullets: Array<string>;
     reactivos_bullets: Array<string>;
   };
+  report_config?: Record<string, any>;
 };
 
 export type PublicSurvey = {

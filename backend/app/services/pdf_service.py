@@ -1,4 +1,5 @@
 import io
+import base64
 import zipfile
 from datetime import datetime
 from uuid import UUID
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -608,7 +610,38 @@ def generate_all_participants_zip(db: Session, company_id: UUID, evaluation_id: 
 # MOTOR DE GENERACIÓN DEL REPORTE EJECUTIVO (29 PÁGINAS EXACTAS)
 # ==============================================================================
 
+def _parse_logo_image(logo_str: str | None):
+    if not logo_str or not isinstance(logo_str, str):
+        return None
+    try:
+        logo_str = logo_str.strip()
+        if logo_str.startswith("data:image"):
+            if "," in logo_str:
+                _, encoded = logo_str.split(",", 1)
+            else:
+                encoded = logo_str
+            raw = base64.b64decode(encoded)
+            return ImageReader(io.BytesIO(raw))
+        elif logo_str.startswith("http://") or logo_str.startswith("https://"):
+            import urllib.request
+            req = urllib.request.Request(logo_str, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return ImageReader(io.BytesIO(resp.read()))
+        else:
+            raw = base64.b64decode(logo_str)
+            return ImageReader(io.BytesIO(raw))
+    except Exception as e:
+        print(f"Warning: could not parse logo image: {e}")
+        return None
+
+
 class MSDExecutiveCanvas(canvas.Canvas):
+    client_logo_reader = None
+    consultant_logo_reader = None
+    cfg_company_name = "MSD"
+    cfg_consultant_name = "abc&co"
+    cfg_header_title = "Reporte Grupal - Evaluación 360°"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
@@ -625,21 +658,86 @@ class MSDExecutiveCanvas(canvas.Canvas):
             canvas.Canvas.showPage(self)
         canvas.Canvas.save(self)
 
+    def _draw_cover_client_logo(self, height):
+        if getattr(self, "client_logo_reader", None):
+            try:
+                self.drawImage(
+                    self.client_logo_reader,
+                    46,
+                    height - 95,
+                    width=135,
+                    height=50,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+                return
+            except Exception:
+                pass
+        self.setFillColor(colors.HexColor("#00857c"))
+        self.circle(46, height - 70, 10, fill=1, stroke=0)
+        self.circle(66, height - 70, 10, fill=1, stroke=0)
+        self.circle(56, height - 58, 10, fill=1, stroke=0)
+        self.circle(56, height - 82, 10, fill=1, stroke=0)
+        self.setFont("Helvetica-Bold", 24)
+        cname = getattr(self, "cfg_company_name", "MSD") or "MSD"
+        self.drawString(85, height - 78, cname)
+
+    def _draw_header_client_logo(self, height):
+        if getattr(self, "client_logo_reader", None):
+            try:
+                self.drawImage(
+                    self.client_logo_reader,
+                    42,
+                    height - 42,
+                    width=65,
+                    height=24,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+                return
+            except Exception:
+                pass
+        self.setFillColor(colors.HexColor("#00857c"))
+        self.circle(42, height - 32, 5, fill=1, stroke=0)
+        self.circle(52, height - 32, 5, fill=1, stroke=0)
+        self.circle(47, height - 25, 5, fill=1, stroke=0)
+        self.circle(47, height - 39, 5, fill=1, stroke=0)
+        self.setFont("Helvetica-Bold", 12)
+        cname = getattr(self, "cfg_company_name", "MSD") or "MSD"
+        self.drawString(62, height - 36, cname)
+
+    def _draw_footer_consultant_logo(self, width):
+        if getattr(self, "consultant_logo_reader", None):
+            try:
+                self.drawImage(
+                    self.consultant_logo_reader,
+                    width - 110,
+                    22,
+                    width=74,
+                    height=26,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+                return
+            except Exception:
+                pass
+        cons_name = getattr(self, "cfg_consultant_name", "abc&co") or "abc&co"
+        self.setFont("Helvetica-Bold", 12)
+        self.setFillColor(colors.HexColor("#65a30d"))
+        self.drawRightString(width - 36, 40, cons_name)
+        self.setFont("Helvetica", 5.5)
+        self.setFillColor(colors.HexColor("#64748b"))
+        self.drawRightString(width - 36, 30, "COACHING / CONSULTING")
+
     def draw_decorations(self, num_pages):
         width, height = letter
         p_num = self._pageNumber
+        header_title = getattr(self, "cfg_header_title", "Reporte Grupal - Evaluación 360°") or "Reporte Grupal - Evaluación 360°"
 
         # Pág 1: Portada
         if p_num == 1:
             self.saveState()
-            # Top-left MSD Logo
-            self.setFillColor(colors.HexColor("#00857c"))
-            self.circle(46, height - 70, 10, fill=1, stroke=0)
-            self.circle(66, height - 70, 10, fill=1, stroke=0)
-            self.circle(56, height - 58, 10, fill=1, stroke=0)
-            self.circle(56, height - 82, 10, fill=1, stroke=0)
-            self.setFont("Helvetica-Bold", 24)
-            self.drawString(85, height - 78, "MSD")
+            self._draw_cover_client_logo(height)
 
             # Ondas vectoriales inferiores de portada
             self.setStrokeColor(colors.HexColor("#94a3b8"))
@@ -657,19 +755,12 @@ class MSDExecutiveCanvas(canvas.Canvas):
         is_separator = p_num in (6, 9, 18, 25)
         if is_separator:
             self.saveState()
-            # Mini logo MSD arriba a la izquierda
-            self.setFillColor(colors.HexColor("#00857c"))
-            self.circle(42, height - 32, 5, fill=1, stroke=0)
-            self.circle(52, height - 32, 5, fill=1, stroke=0)
-            self.circle(47, height - 25, 5, fill=1, stroke=0)
-            self.circle(47, height - 39, 5, fill=1, stroke=0)
-            self.setFont("Helvetica-Bold", 12)
-            self.drawString(62, height - 36, "MSD")
+            self._draw_header_client_logo(height)
 
             # Encabezado derecha
             self.setFont("Helvetica", 8.5)
             self.setFillColor(colors.HexColor("#1e293b"))
-            self.drawRightString(width - 36, height - 34, "Reporte Grupal - Evaluación 360°")
+            self.drawRightString(width - 36, height - 34, header_title)
 
             # Pie de página: curva decorativa abajo a la izquierda
             self.setStrokeColor(colors.HexColor("#cbd5e1"))
@@ -680,13 +771,7 @@ class MSDExecutiveCanvas(canvas.Canvas):
                 p.curveTo(40, 10 + i * 5, 80, 60 + i * 3, 140, 20 + i * 4)
                 self.drawPath(p, stroke=1, fill=0)
 
-            # Logo abc&co abajo a la derecha
-            self.setFont("Helvetica-Bold", 12)
-            self.setFillColor(colors.HexColor("#65a30d"))
-            self.drawRightString(width - 36, 40, "abc&co")
-            self.setFont("Helvetica", 5.5)
-            self.setFillColor(colors.HexColor("#64748b"))
-            self.drawRightString(width - 36, 30, "COACHING / CONSULTING")
+            self._draw_footer_consultant_logo(width)
 
             # Número de página sutil al centro
             self.setFont("Helvetica", 7.5)
@@ -697,19 +782,12 @@ class MSDExecutiveCanvas(canvas.Canvas):
 
         # Páginas normales de contenido (2..5, 7, 8, 10..17, 19..24, 26..29)
         self.saveState()
-        # Top-left MSD logo
-        self.setFillColor(colors.HexColor("#00857c"))
-        self.circle(42, height - 32, 5, fill=1, stroke=0)
-        self.circle(52, height - 32, 5, fill=1, stroke=0)
-        self.circle(47, height - 25, 5, fill=1, stroke=0)
-        self.circle(47, height - 39, 5, fill=1, stroke=0)
-        self.setFont("Helvetica-Bold", 12)
-        self.drawString(62, height - 36, "MSD")
+        self._draw_header_client_logo(height)
 
         # Top-right title
         self.setFont("Helvetica", 8.5)
         self.setFillColor(colors.HexColor("#1e293b"))
-        self.drawRightString(width - 36, height - 34, "Reporte Grupal - Evaluación 360°")
+        self.drawRightString(width - 36, height - 34, header_title)
 
         # Bottom-left curva decorativa
         self.setStrokeColor(colors.HexColor("#cbd5e1"))
@@ -720,19 +798,27 @@ class MSDExecutiveCanvas(canvas.Canvas):
             p.curveTo(40, 10 + i * 5, 80, 60 + i * 3, 140, 20 + i * 4)
             self.drawPath(p, stroke=1, fill=0)
 
-        # Bottom-right abc&co logo
-        self.setFont("Helvetica-Bold", 12)
-        self.setFillColor(colors.HexColor("#65a30d"))
-        self.drawRightString(width - 36, 40, "abc&co")
-        self.setFont("Helvetica", 5.5)
-        self.setFillColor(colors.HexColor("#64748b"))
-        self.drawRightString(width - 36, 30, "COACHING / CONSULTING")
+        self._draw_footer_consultant_logo(width)
 
         # Número de página sutil al centro
         self.setFont("Helvetica", 7.5)
         self.setFillColor(colors.HexColor("#94a3b8"))
         self.drawCentredString(width / 2.0, 18, f"{p_num}")
         self.restoreState()
+
+
+def make_executive_canvas(client_logo=None, consultant_logo=None, company_name="MSD", consultant_name="abc&co", header_title="Reporte Grupal - Evaluación 360°"):
+    c_reader = _parse_logo_image(client_logo)
+    cons_reader = _parse_logo_image(consultant_logo)
+
+    class DynamicExecutiveCanvas(MSDExecutiveCanvas):
+        client_logo_reader = c_reader
+        consultant_logo_reader = cons_reader
+        cfg_company_name = company_name
+        cfg_consultant_name = consultant_name
+        cfg_header_title = header_title
+
+    return DynamicExecutiveCanvas
 
 
 def _get_executive_report_styles():
@@ -865,28 +951,49 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
 
     story = []
 
+    cfg = results.report_config or {}
+    company_name = cfg.get("company_name") or results.company_name or "MSD"
+    consultant_name = cfg.get("consultant_name") or "abc&co"
+    header_title = cfg.get("header_title") or "Reporte Grupal - Evaluación 360°"
+
+    th_high = float(results.thresholds.get("high", 8.5)) if results.thresholds else 8.5
+    th_med = float(results.thresholds.get("medium", 7.0)) if results.thresholds else 7.0
+    label_high = cfg.get("label_high", "excede expectativas")
+    label_med = cfg.get("label_med", "cumple expectativas")
+    label_low = cfg.get("label_low", "necesita mejora")
+
     # =========================================================================
     # PÁGINA 1: PORTADA
     # =========================================================================
+    cov_t1 = cfg.get("cover_title_1") or "REPORTE DE"
+    cov_t2 = cfg.get("cover_title_2") or "EVALUACIÓN"
+    cov_t3 = cfg.get("cover_title_3") or "360°"
+    cov_s1 = cfg.get("cover_subtitle_1") or "REPORTE GRUPAL"
+    cov_s2 = cfg.get("cover_subtitle_2") or f"Fuerza de ventas {company_name}"
+
     story.append(Spacer(1, 140))
-    story.append(Paragraph("REPORTE DE", sty["cover_title"]))
-    story.append(Paragraph("EVALUACIÓN", sty["cover_title"]))
-    story.append(Paragraph("360°", ParagraphStyle("CoverBig360", parent=sty["cover_title"], fontSize=34, leading=38, textColor=colors.HexColor("#0f172a"))))
+    story.append(Paragraph(cov_t1, sty["cover_title"]))
+    story.append(Paragraph(cov_t2, sty["cover_title"]))
+    story.append(Paragraph(cov_t3, ParagraphStyle("CoverBig360", parent=sty["cover_title"], fontSize=34, leading=38, textColor=colors.HexColor("#0f172a"))))
     story.append(Spacer(1, 180))
-    story.append(Paragraph("REPORTE GRUPAL", ParagraphStyle("CoverRepGrup", parent=sty["cover_subtitle"], fontSize=13, leading=16, alignment=TA_RIGHT)))
-    story.append(Paragraph("Fuerza de ventas MSD", ParagraphStyle("CoverSubR", parent=sty["cover_subtitle"], fontSize=13, leading=16, alignment=TA_RIGHT)))
+    story.append(Paragraph(cov_s1, ParagraphStyle("CoverRepGrup", parent=sty["cover_subtitle"], fontSize=13, leading=16, alignment=TA_RIGHT)))
+    story.append(Paragraph(cov_s2, ParagraphStyle("CoverSubR", parent=sty["cover_subtitle"], fontSize=13, leading=16, alignment=TA_RIGHT)))
     story.append(PageBreak())
 
     # =========================================================================
     # PÁGINA 2: INTRODUCCIÓN Y COMPETENCIAS (PARTE 1)
     # =========================================================================
+    intro_1 = cfg.get("intro_p1") or f"En el contexto del proceso de transformación que actualmente atraviesa {company_name}, se llevó a cabo una evaluación estructurada de las competencias clave de la fuerza de ventas, con el propósito de identificar el nivel de madurez individual y grupal, así como detectar oportunidades estratégicas de fortalecimiento."
+    intro_2 = cfg.get("intro_p2") or f"El entorno competitivo y la evolución del modelo comercial exigen no solo excelencia operativa, sino también sofisticación analítica, adaptabilidad y capacidad de influencia en entornos cada vez más complejos. Bajo esta premisa, {company_name} definió cuatro competencias críticas alineadas con el modelo de desempeño esperado."
+    intro_3 = cfg.get("intro_p3") or "La evaluación fue diseñada bajo un enfoque 360°, incorporando la autoevaluación del representante, la evaluación de su líder directo y la evaluación de dos pares, con el fin de obtener una visión integral y balanceada del desempeño."
+
     story.append(Paragraph("Introducción", sty["section_title"]))
-    story.append(Paragraph("• En el contexto del proceso de transformación que actualmente atraviesa MSD, se llevó a cabo una evaluación estructurada de las competencias clave de la fuerza de ventas, con el propósito de identificar el nivel de madurez individual y grupal, así como detectar oportunidades estratégicas de fortalecimiento.", sty["bullet"]))
-    story.append(Paragraph("• El entorno competitivo y la evolución del modelo comercial exigen no solo excelencia operativa, sino también sofisticación analítica, adaptabilidad y capacidad de influencia en entornos cada vez más complejos. Bajo esta premisa, MSD definió cuatro competencias críticas alineadas con el modelo de desempeño esperado.", sty["bullet"]))
-    story.append(Paragraph("• La evaluación fue diseñada bajo un enfoque 360°, incorporando la autoevaluación del representante, la evaluación de su líder directo y la evaluación de dos pares, con el fin de obtener una visión integral y balanceada del desempeño.", sty["bullet"]))
+    story.append(Paragraph(f"• {intro_1}", sty["bullet"]))
+    story.append(Paragraph(f"• {intro_2}", sty["bullet"]))
+    story.append(Paragraph(f"• {intro_3}", sty["bullet"]))
     story.append(Spacer(1, 14))
 
-    story.append(Paragraph("Competencias MSD", sty["section_title"]))
+    story.append(Paragraph(f"Competencias {company_name}", sty["section_title"]))
     c_names = [c.competency_name for c in results.competencies]
     c1_name = c_names[0] if len(c_names) > 0 else "Excelencia en la ejecución"
     c2_name = c_names[1] if len(c_names) > 1 else "Flexibilidad y capacidad de adaptación"
@@ -907,8 +1014,10 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
     story.append(Paragraph(f"<b>4. {c4_name}:</b> Habilidad para generar impacto positivo, credibilidad y confianza con médicos, líderes hospitalarios, compras, líderes de opinión \"KOLs\" y decisores.", sty["bullet"]))
     story.append(Spacer(1, 14))
 
+    obj_main = cfg.get("objectives_main") or "Evaluar el nivel de desarrollo y homogeneidad de las competencias clave de la fuerza de ventas, identificando fortalezas consolidadas y brechas estratégicas en el contexto del proceso de transformación organizacional."
+
     story.append(Paragraph("Objetivo del Reporte Grupal", sty["section_title"]))
-    story.append(Paragraph("Evaluar el nivel de desarrollo y homogeneidad de las competencias clave de la fuerza de ventas, identificando fortalezas consolidadas y brechas estratégicas en el contexto del proceso de transformación organizacional.", sty["body"]))
+    story.append(Paragraph(obj_main, sty["body"]))
     story.append(Spacer(1, 4))
     story.append(Paragraph("De manera más específica, este reporte busca:", sty["body"]))
     story.append(Paragraph("1. Determinar el nivel promedio de desarrollo de cada competencia evaluada.", sty["bullet"]))
@@ -920,7 +1029,7 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
     story.append(Paragraph("Metodología", sty["section_title"]))
     tot_eval = results.total_evaluados
     lines_str = ", ".join([b.line_name for b in results.business_lines]) or "Diabetes, Especialidades y Sotatercep"
-    story.append(Paragraph(f"La evaluación de competencias 360° fue aplicada a la totalidad de los representantes médicos de MSD ({tot_eval} personas, distribuidas en las líneas: {lines_str}) a través de una encuesta estructurada basada en comportamientos observables.", sty["body"]))
+    story.append(Paragraph(f"La evaluación de competencias 360° fue aplicada a la totalidad de los representantes médicos de {company_name} ({tot_eval} personas, distribuidas en las líneas: {lines_str}) a través de una encuesta estructurada basada en comportamientos observables.", sty["body"]))
     story.append(PageBreak())
 
     # =========================================================================
@@ -939,16 +1048,16 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
     story.append(Paragraph("Puntaje neto", sty["subsection_title"]))
     story.append(Paragraph("Representa el promedio integrado de todas las fuentes (autoevaluación, líder y pares). Refleja qué tan sólida y consistente es una competencia en la práctica cotidiana, se utilizó la siguiente escala:", sty["body"]))
     story.append(Spacer(1, 6))
-    story.append(Paragraph("• <b>Mayor o igual a 8.5:</b> se debe interpretar como una competencia consolidada y diferenciada, es decir, <b>excede expectativas</b>.", sty["bullet"]))
-    story.append(Paragraph("• <b>Entre 7.0 y 8.4:</b> indica un desempeño funcional adecuado, con oportunidades de consistencia, es decir, <b>cumple expectativas</b>.", sty["bullet"]))
-    story.append(Paragraph("• <b>Menor o igual a 6.9:</b> indica la existencia de una brecha relevante que requiere intervención, es decir, <b>necesita mejora</b>.", sty["bullet"]))
+    story.append(Paragraph(f"• <b>Mayor o igual a {th_high:.1f}:</b> se debe interpretar como una competencia consolidada y diferenciada, es decir, <b>{label_high}</b>.", sty["bullet"]))
+    story.append(Paragraph(f"• <b>Entre {th_med:.1f} y {th_high - 0.1:.1f}:</b> indica un desempeño funcional adecuado, con oportunidades de consistencia, es decir, <b>{label_med}</b>.", sty["bullet"]))
+    story.append(Paragraph(f"• <b>Menor o igual a {th_med - 0.1:.1f}:</b> indica la existencia de una brecha relevante que requiere intervención, es decir, <b>{label_low}</b>.", sty["bullet"]))
     story.append(PageBreak())
 
     # =========================================================================
     # PÁGINA 5: PUNTAJE PONDERADO
     # =========================================================================
     story.append(Paragraph("Puntaje ponderado", sty["section_title"]))
-    story.append(Paragraph("MSD estableció la siguiente ponderación para cada una de las cuatro competencias evaluadas:", sty["body"]))
+    story.append(Paragraph(f"{company_name} estableció la siguiente ponderación para cada una de las cuatro competencias evaluadas:", sty["body"]))
     story.append(Spacer(1, 8))
 
     for c in results.competencies:
@@ -1071,10 +1180,10 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
         for c_idx, c in enumerate(results.competencies, start=3):
             val = p.net_scores.get(c.competency_name, 0.0)
             row.append(f"{val:.2f}")
-            if val >= 8.5:
+            if val >= th_high:
                 t10_styles.append(("BACKGROUND", (c_idx, r_idx), (c_idx, r_idx), colors.HexColor("#dcfce7")))
                 t10_styles.append(("TEXTCOLOR", (c_idx, r_idx), (c_idx, r_idx), colors.HexColor("#15803d")))
-            elif val >= 7.0:
+            elif val >= th_med:
                 t10_styles.append(("BACKGROUND", (c_idx, r_idx), (c_idx, r_idx), colors.HexColor("#fef9c3")))
                 t10_styles.append(("TEXTCOLOR", (c_idx, r_idx), (c_idx, r_idx), colors.HexColor("#854d0e")))
             else:
@@ -1357,8 +1466,15 @@ def build_executive_29p_report_from_results(results: ExecutiveReportResults) -> 
     img_seg4 = generate_segmented_scatter_plot(c4_name, seg_c4, results.competencies[3].weighted_median if len(results.competencies) > 3 else 1.35, y_min=1.0, y_max=1.8, width_inches=7.0, height_inches=4.2)
     story.append(Image(io.BytesIO(img_seg4), width=500, height=340))
 
-    # Construir documento final con MSDExecutiveCanvas
-    doc.build(story, canvasmaker=MSDExecutiveCanvas)
+    # Construir documento final con canvas dinámico configurado
+    canvas_cls = make_executive_canvas(
+        client_logo=results.client_logo_url,
+        consultant_logo=results.consultant_logo_url,
+        company_name=company_name,
+        consultant_name=consultant_name,
+        header_title=header_title,
+    )
+    doc.build(story, canvasmaker=canvas_cls)
     buffer.seek(0)
     return buffer.getvalue()
 

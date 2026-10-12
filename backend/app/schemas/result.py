@@ -182,3 +182,4 @@ class ExecutiveReportResults(BaseModel):
     business_lines: list[BusinessLineResult] = []
     scatter_data: dict[str, list[ScatterPoint]] = {}
     insights: ExecutiveSummaryInsights
+    report_config: dict = {}
