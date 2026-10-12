@@ -10,9 +10,12 @@ export default function SurveyPage() {
   const [survey, setSurvey] = useState<PublicSurvey | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [answers, setAnswers] = useState<
     Record<string, { score?: number | null; selected_option?: string; selected_options?: string[]; no_observed?: boolean }>
   >({});
+
+  const draftKey = params.token ? `survey_draft_${params.token}` : null;
 
   useEffect(() => {
     async function loadSurvey() {
@@ -27,8 +30,36 @@ export default function SurveyPage() {
     void loadSurvey();
   }, [params.token]);
 
+  // Restaurar borrador de localStorage al cargar la página
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+          setAnswers(parsed);
+          setDraftRestored(true);
+        }
+      }
+    } catch (e) {
+      console.error("Error al cargar borrador de encuesta:", e);
+    }
+  }, [draftKey]);
+
+  // Guardar borrador automáticamente al cambiar respuestas
+  useEffect(() => {
+    if (!draftKey || Object.keys(answers).length === 0) return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(answers));
+    } catch (e) {
+      console.error("Error al guardar borrador de encuesta:", e);
+    }
+  }, [answers, draftKey]);
+
   async function submitSurvey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     if (!survey) return;
     setLoading(true);
     setMessage("");
@@ -40,7 +71,7 @@ export default function SurveyPage() {
 
       const qType = question.question_type;
       if (qType === "numeric_1_10" || qType === "nps" || qType === "semantic_differential") {
-        return ans.score === undefined && !ans.no_observed;
+        return (ans.score === undefined || ans.score === null) && !ans.no_observed;
       }
       if (
         qType === "dicotomic" ||
@@ -49,7 +80,7 @@ export default function SurveyPage() {
         qType === "frequency" ||
         qType === "categorization"
       ) {
-        return ans.selected_option === undefined;
+        return ans.selected_option === undefined && (ans.score === undefined || ans.score === null) && !ans.no_observed;
       }
       if (qType === "multiple_choice" || qType === "checklist") {
         return !ans.selected_options || ans.selected_options.length === 0;
@@ -58,7 +89,12 @@ export default function SurveyPage() {
         const optsCount = Array.isArray(question.options) ? question.options.length : 0;
         return !ans.selected_options || ans.selected_options.length !== optsCount;
       }
-      return false;
+      return (
+        (ans.score === undefined || ans.score === null) &&
+        !ans.no_observed &&
+        !ans.selected_option &&
+        (!ans.selected_options || ans.selected_options.length === 0)
+      );
     });
 
     if (missingQuestion) {
@@ -67,7 +103,7 @@ export default function SurveyPage() {
       return;
     }
 
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(form);
     const responses = survey.questions.map((question) => ({
       question_id: question.id,
       score: answers[question.id]?.score ?? null,
@@ -83,7 +119,14 @@ export default function SurveyPage() {
       });
       setMessage("Respuestas enviadas correctamente.");
       setAnswers({});
-      event.currentTarget.reset();
+      if (draftKey) {
+        try {
+          localStorage.removeItem(draftKey);
+        } catch (e) {
+          // ignore
+        }
+      }
+      form.reset();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudieron enviar respuestas");
     } finally {
@@ -96,15 +139,22 @@ export default function SurveyPage() {
     const ans = answers[question.id] || {};
 
     if (qType === "numeric_1_10") {
+      const descriptions = {
+        1: "No lo demuestra",
+        2: "Demostrado ocasionalmente",
+        3: "Demostrado frecuentemente",
+        4: "Lo demuestra de manera consistente"
+      };
       return (
         <div className="field">
-          <label>Puntaje 1 a 4</label>
-          <div className="rating-options" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <label style={{ fontWeight: 600, marginBottom: 8, display: "block" }}>Puntaje (Escala 1 a 4)</label>
+          <div className="rating-options" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
             {[1, 2, 3, 4].map((num) => (
               <button
                 key={num}
                 type="button"
                 className={`rating-btn ${ans.score === num ? "selected" : ""}`}
+                style={{ width: 44, height: 44, fontSize: "1.1rem", fontWeight: "bold" }}
                 onClick={() => setAnswers((prev) => ({ ...prev, [question.id]: { score: num, no_observed: false } }))}
               >
                 {num}
@@ -114,12 +164,28 @@ export default function SurveyPage() {
               <button
                 type="button"
                 className={`rating-btn ${ans.score === null && ans.no_observed ? "selected" : ""}`}
-                style={{ borderRadius: 10, width: "auto", padding: "0 14px" }}
+                style={{ borderRadius: 10, width: "auto", padding: "0 16px", height: 44, fontSize: "0.95rem" }}
                 onClick={() => setAnswers((prev) => ({ ...prev, [question.id]: { score: null, no_observed: true } }))}
               >
                 No observado
               </button>
             )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, background: "rgba(0,0,0,0.015)", padding: 10, borderRadius: 6, border: "1px solid var(--line)" }}>
+            {Object.entries(descriptions).map(([num, desc]) => (
+              <div 
+                key={num} 
+                style={{ fontSize: "0.75rem", display: "flex", gap: 6, alignItems: "flex-start", cursor: "pointer" }}
+                onClick={() => setAnswers((prev) => ({ ...prev, [question.id]: { score: Number(num), no_observed: false } }))}
+              >
+                <strong style={{ background: ans.score === Number(num) ? "var(--accent)" : "rgba(0,0,0,0.05)", color: ans.score === Number(num) ? "#fff" : "inherit", minWidth: 16, height: 16, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>
+                  {num}
+                </strong>
+                <span className={ans.score === Number(num) ? "active-text" : "muted"} style={{ fontWeight: ans.score === Number(num) ? "bold" : "normal" }}>
+                  {desc}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       );
@@ -311,7 +377,7 @@ export default function SurveyPage() {
     <main className="shell survey-shell">
       <header className="topbar">
         <div className="brand">
-          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 28, objectFit: "contain" }} />
+          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 32, width: "auto", objectFit: "contain" }} />
           <span>Encuesta 360</span>
         </div>
       </header>
@@ -330,6 +396,12 @@ export default function SurveyPage() {
 
         {message && <p className={message.includes("correctamente") ? "success" : "error"}>{message}</p>}
         {loading && <p className="muted">Cargando...</p>}
+
+        {draftRestored && !message.includes("correctamente") && (
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af", padding: "10px 16px", borderRadius: 8, fontSize: "0.85rem", fontWeight: 600, marginBottom: 18, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>💾 Reanudando tu evaluación: se cargaron tus respuestas guardadas automáticamente en este dispositivo.</span>
+          </div>
+        )}
 
         {survey && (
           <form className="form" onSubmit={submitSurvey}>

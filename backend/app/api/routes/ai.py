@@ -64,15 +64,34 @@ def generate_questions(
         competency_id = UUID(str(item["competency_id"]))
         if competency_id not in {competency.id for competency in competencies}:
             continue
+        
+        t_self = item.get("text_self") or item.get("text") or ""
+        t_eval = item.get("text_evaluator") or item.get("text") or ""
+        t_base = t_eval or t_self
+        
+        tag_s = f"P{index + 1} Autoevaluado"
+        tag_e = f"P{index + 1}B Evaluador"
+
         question = Question(
             company_id=current_user.company_id,
             evaluation_id=evaluation_id,
             competency_id=competency_id,
-            text=item["text"],
-            position=index,
+            text=t_base,
+            text_self=t_self,
+            text_evaluator=t_eval,
+            tag_self=tag_s,
+            tag_evaluator=tag_e,
+            position=index + 1,
         )
         db.add(question)
-        question_reads.append(GeneratedQuestion(competency_id=competency_id, text=item["text"]))
+        question_reads.append(
+            GeneratedQuestion(
+                competency_id=competency_id,
+                text=t_base,
+                text_self=t_self,
+                text_evaluator=t_eval,
+            )
+        )
 
     db.commit()
     return GeneratedQuestionsResponse(questions=question_reads)

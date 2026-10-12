@@ -8,6 +8,24 @@ from pydantic import BaseModel, Field
 class EvaluationCreate(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = None
+    assessment_type: str | None = Field(default="individual_contributor", max_length=60)
+    client_logo_url: str | None = Field(default=None, max_length=500)
+    consultant_logo_url: str | None = Field(default=None, max_length=500)
+    scale_type: str | None = Field(default="numeric_1_10", max_length=50)
+    score_thresholds: dict | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+
+class EvaluationUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=200)
+    description: str | None = None
+    status: str | None = Field(default=None, max_length=40)
+    assessment_type: str | None = Field(default=None, max_length=60)
+    client_logo_url: str | None = Field(default=None, max_length=500)
+    consultant_logo_url: str | None = Field(default=None, max_length=500)
+    scale_type: str | None = Field(default=None, max_length=50)
+    score_thresholds: dict | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
 
@@ -17,6 +35,11 @@ class EvaluationRead(BaseModel):
     title: str
     description: str | None
     status: str
+    assessment_type: str | None = "individual_contributor"
+    client_logo_url: str | None = None
+    consultant_logo_url: str | None = None
+    scale_type: str | None = "numeric_1_10"
+    score_thresholds: dict | None = None
     starts_at: datetime | None
     ends_at: datetime | None
     created_at: datetime

@@ -7,6 +7,12 @@ import { api, API_URL, ApiError, Evaluation } from "@/lib/api";
 
 type Mode = "login" | "register";
 
+const statusLabels: Record<string, string> = {
+  draft: "Borrador",
+  active: "Activa",
+  completed: "Finalizada",
+};
+
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("login");
@@ -201,7 +207,7 @@ export default function HomePage() {
     <main className="shell">
       <header className="topbar">
         <div className="brand">
-          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 28, objectFit: "contain" }} />
+          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 32, width: "auto", objectFit: "contain" }} />
           <span>RRHH 360 AI</span>
         </div>
         <button className="button secondary" onClick={logout} type="button">
@@ -217,7 +223,12 @@ export default function HomePage() {
             <p className="muted">Panel operativo para crear y medir evaluaciones 360.</p>
           </div>
           <div className="toolbar">
-            <span className="status-pill">{evaluations.length} activas</span>
+            <span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-dark)", borderColor: "#b8ddd6" }}>
+              {evaluations.filter((e) => e.status === "active").length} activas
+            </span>
+            <span className="status-pill" style={{ background: "#edf1f6", color: "#263244", borderColor: "var(--line)" }}>
+              {evaluations.length} total
+            </span>
             <button className="button secondary" onClick={() => loadEvaluations()} type="button">
               <RefreshCw size={16} />
               Actualizar
@@ -247,7 +258,7 @@ export default function HomePage() {
 
           <section className="panel">
             <div className="row">
-              <h2>Activas</h2>
+              <h2>Evaluaciones</h2>
               <BarChart3 size={22} />
             </div>
             <div className="list">
@@ -255,13 +266,13 @@ export default function HomePage() {
                 <Link className="item" href={`/evaluations/${evaluation.id}`} key={evaluation.id}>
                   <div className="row">
                     <strong>{evaluation.title}</strong>
-                    <span className="status-pill">{evaluation.status}</span>
+                    <span className="status-pill">{statusLabels[evaluation.status] || evaluation.status}</span>
                   </div>
                   <span className="muted">{evaluation.description || "Sin descripcion"}</span>
                 </Link>
               ))}
               {!evaluations.length && (
-                <div className="empty-state">Todavia no hay evaluaciones activas.</div>
+                <div className="empty-state">Todavia no hay evaluaciones creadas.</div>
               )}
             </div>
           </section>

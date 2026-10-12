@@ -8,6 +8,52 @@ from app.api.routes import ai, auth, competencies, competency_bank, evaluations,
 from app.core.config import settings
 from app.core.rate_limit import limiter
 
+from sqlalchemy import text
+from app.db.session import engine
+
+def run_auto_migrations():
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS assessment_type VARCHAR(60) DEFAULT 'individual_contributor';"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS client_logo_url VARCHAR(500);"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS consultant_logo_url VARCHAR(500);"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS scale_type VARCHAR(50) DEFAULT 'numeric_1_10';"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS score_thresholds JSONB DEFAULT '{\"high\": 8.5, \"medium\": 7.0}'::jsonb;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE participants ADD COLUMN IF NOT EXISTS business_line VARCHAR(120);"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE participants ADD COLUMN IF NOT EXISTS performance_history JSONB DEFAULT '{}'::jsonb;"
+                )
+            )
+    except Exception as e:
+        print(f"Auto-migration warning: {e}")
+
+run_auto_migrations()
+
 app = FastAPI(title="Evaluation 360 AI SaaS", version="0.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

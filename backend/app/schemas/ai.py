@@ -6,6 +6,8 @@ from pydantic import BaseModel
 class GeneratedQuestion(BaseModel):
     competency_id: UUID
     text: str
+    text_self: str | None = None
+    text_evaluator: str | None = None
 
 
 class GeneratedQuestionsResponse(BaseModel):

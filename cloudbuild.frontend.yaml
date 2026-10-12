@@ -2,8 +2,9 @@ substitutions:
   _REGION: us-central1
   _FRONTEND_SERVICE: rrhh-web
   _AR_REPO: rrhh
-  _API_URL: https://rrhh-api-udcvzoylva-uc.a.run.app
+  _API_URL: https://rrhh-api-956343367824.us-central1.run.app
   _IMAGE_TAG: latest
+
 
 steps:
   - id: build-frontend-image

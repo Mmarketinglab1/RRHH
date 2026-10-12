@@ -292,7 +292,8 @@ def download_import_template(
         "Competencia", 
         "Descripción de la Competencia", 
         "Peso", 
-        "Pregunta", 
+        "Pregunta Autoevaluado", 
+        "Pregunta Evaluador (Espejo)",
         "Tipo de Pregunta", 
         "Opciones (separadas por coma)", 
         "Evaluativa (SI/NO)"
@@ -304,6 +305,7 @@ def download_import_template(
         "Liderazgo",
         "Habilidad para dirigir, coordinar e impulsar al equipo.",
         1.0,
+        "¿Demuestro iniciativa para liderar nuevos proyectos?",
         "¿El evaluado demuestra iniciativa para liderar nuevos proyectos?",
         "numeric_1_10",
         "",
@@ -313,6 +315,7 @@ def download_import_template(
         "Liderazgo",
         "Habilidad para dirigir, coordinar e impulsar al equipo.",
         1.0,
+        "¿Delego responsabilidades de manera equilibrada y clara?",
         "¿El evaluado delega responsabilidades de manera equilibrada y clara?",
         "likert",
         "Muy en desacuerdo, En desacuerdo, Neutral, De acuerdo, Muy de acuerdo",
@@ -322,6 +325,7 @@ def download_import_template(
         "Trabajo en Equipo",
         "Capacidad de colaborar con otros para lograr metas comunes.",
         1.2,
+        "¿Comparto información y conocimientos de forma abierta?",
         "¿El evaluado comparte información y conocimientos de forma abierta?",
         "dicotomic",
         "Sí, No",
@@ -331,6 +335,7 @@ def download_import_template(
         "Trabajo en Equipo",
         "Capacidad de colaborar con otros para lograr metas comunes.",
         1.2,
+        "¿Qué áreas de mejora técnica sugerirías para ti?",
         "¿Qué áreas de mejora técnica sugerirías para el evaluado?",
         "checklist",
         "Puntualidad, Comunicación, Calidad técnica, Organización",
@@ -377,6 +382,12 @@ async def import_competencies_xlsx(
     if not ws:
         raise HTTPException(status_code=400, detail="La hoja de cálculo está vacía")
 
+    # Detect formatting (new vs old template)
+    first_row = next(ws.iter_rows(max_row=1, values_only=True), None)
+    is_new_format = False
+    if first_row and len(first_row) > 4 and "pregunta evaluador" in str(first_row[4]).lower():
+        is_new_format = True
+
     competencies_created = 0
     questions_created = 0
     questions_skipped = 0
@@ -407,7 +418,18 @@ async def import_competencies_xlsx(
         except (ValueError, TypeError):
             comp_weight = 1.0
 
-        question_text = str(row[3]).strip() if row[3] is not None else None
+        if is_new_format:
+            question_text_self = str(row[3]).strip() if row[3] is not None else None
+            question_text_evaluator = str(row[4]).strip() if len(row) > 4 and row[4] is not None else None
+            question_type = str(row[5]).strip().lower() if len(row) > 5 and row[5] is not None else "numeric_1_10"
+            raw_opts = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ""
+            is_evaluative = str(row[7]).strip().upper() in ("SI", "YES", "TRUE", "1") if len(row) > 7 and row[7] is not None else True
+        else:
+            question_text_self = str(row[3]).strip() if row[3] is not None else None
+            question_text_evaluator = question_text_self
+            question_type = str(row[4]).strip().lower() if len(row) > 4 and row[4] is not None else "numeric_1_10"
+            raw_opts = str(row[5]).strip() if len(row) > 5 and row[5] is not None else ""
+            is_evaluative = str(row[6]).strip().upper() in ("SI", "YES", "TRUE", "1") if len(row) > 6 and row[6] is not None else True
 
         competency = local_competency_cache.get(comp_name)
         if not competency:
@@ -432,51 +454,51 @@ async def import_competencies_xlsx(
             competencies_created += 1
             local_competency_cache[comp_name] = competency
 
-        if question_text:
+        if question_text_self or question_text_evaluator:
+            check_text = question_text_self or question_text_evaluator
             question_exists = db.scalar(
                 select(Question).where(
                     Question.company_id == current_user.company_id,
                     Question.evaluation_id == evaluation_id,
                     Question.competency_id == competency.id,
-                    Question.text == question_text,
+                    Question.text_self == question_text_self,
                 )
             )
             if question_exists:
                 questions_skipped += 1
                 continue
 
-            # Parsing new columns
-            question_type = "numeric_1_10"
+            # Parsing options
             options = None
-            is_evaluative = True
-
-            if len(row) > 4 and row[4] is not None:
-                question_type = str(row[4]).strip().lower()
-            if len(row) > 5 and row[5] is not None:
-                raw_opts = str(row[5]).strip()
-                if raw_opts:
-                    if question_type == "semantic_differential":
-                        parts = [p.strip() for p in raw_opts.split("-") if p.strip()]
+            if raw_opts:
+                if question_type == "semantic_differential":
+                    parts = [p.strip() for p in raw_opts.split("-") if p.strip()]
+                    if len(parts) == 2:
+                        options = {"left_label": parts[0], "right_label": parts[1], "steps": 7}
+                    else:
+                        parts = [p.strip() for p in raw_opts.split(",") if p.strip()]
                         if len(parts) == 2:
                             options = {"left_label": parts[0], "right_label": parts[1], "steps": 7}
                         else:
-                            parts = [p.strip() for p in raw_opts.split(",") if p.strip()]
-                            if len(parts) == 2:
-                                options = {"left_label": parts[0], "right_label": parts[1], "steps": 7}
-                            else:
-                                options = [p.strip() for p in raw_opts.split(",") if p.strip()]
-                    else:
-                        options = [p.strip() for p in raw_opts.split(",") if p.strip()]
-
-            if len(row) > 6 and row[6] is not None:
-                is_evaluative = str(row[6]).strip().upper() in ("SI", "YES", "TRUE", "1")
+                            options = [p.strip() for p in raw_opts.split(",") if p.strip()]
+                else:
+                    options = [p.strip() for p in raw_opts.split(",") if p.strip()]
 
             max_position += 1
+            
+            # Setup positions tags
+            tag_s = f"P{max_position} Autoevaluado"
+            tag_e = f"P{max_position}B Evaluador"
+
             new_question = Question(
                 company_id=current_user.company_id,
                 evaluation_id=evaluation_id,
                 competency_id=competency.id,
-                text=question_text,
+                text=question_text_evaluator or question_text_self or "",
+                text_self=question_text_self or question_text_evaluator,
+                text_evaluator=question_text_evaluator or question_text_self,
+                tag_self=tag_s,
+                tag_evaluator=tag_e,
                 position=max_position,
                 question_type=question_type,
                 options=options,

@@ -11,21 +11,36 @@ import {
   Save,
   Trash2,
   X,
+  Copy,
+  Check,
+  ExternalLink,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  Table,
+  Download,
+  FileText,
+  FileArchive,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import {
   api,
   API_URL,
+  downloadFile,
   Assignment,
   Competency,
   CompetencyBank,
   Evaluation,
   EvaluationResults,
+  ExecutiveReportResults,
   Participant,
+  ParticipantDetailResults,
   Question,
 } from "@/lib/api";
+
 
 // Banco de preguntas sugeridas migrado a base de datos de manera dinámica
 
@@ -41,7 +56,11 @@ export default function EvaluationDetail() {
   const [results, setResults] = useState<EvaluationResults | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'structure' | 'participants' | 'results'>('structure');
+  const [activeTab, setActiveTab] = useState<'structure' | 'participants' | 'dispatch' | 'results'>('structure');
+  const [dispatchSearch, setDispatchSearch] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [expandedEvaluatees, setExpandedEvaluatees] = useState<Record<string, boolean>>({});
   const [editingCompetencyId, setEditingCompetencyId] = useState<string | null>(null);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
@@ -53,8 +72,128 @@ export default function EvaluationDetail() {
   const [competencyBankOptions, setCompetencyBankOptions] = useState<CompetencyBank[]>([]);
   const [isCustomCompetency, setIsCustomCompetency] = useState<boolean>(false);
   const [prefilledDesc, setPrefilledDesc] = useState<string>("");
+  
+  const [selectedEvaluateeId, setSelectedEvaluateeId] = useState<string>("");
+
+  const [resultsSubTab, setResultsSubTab] = useState<'general' | 'participant' | 'executive'>('general');
+  const [selectedParticipantForReport, setSelectedParticipantForReport] = useState<string>("");
+  const [participantReport, setParticipantReport] = useState<ParticipantDetailResults | null>(null);
+  const [loadingParticipantReport, setLoadingParticipantReport] = useState(false);
+  const [downloadingGeneralPdf, setDownloadingGeneralPdf] = useState(false);
+  const [downloadingParticipantPdf, setDownloadingParticipantPdf] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [downloadingExecutivePdf, setDownloadingExecutivePdf] = useState(false);
+  const [executiveResults, setExecutiveResults] = useState<ExecutiveReportResults | null>(null);
+  const [loadingExecutive, setLoadingExecutive] = useState(false);
+
+  async function handleDownloadGeneralPdf() {
+    if (!token || !evaluationId) return;
+    setDownloadingGeneralPdf(true);
+    try {
+      await downloadFile(`/evaluations/${evaluationId}/results/pdf`, `Informe_General_360.pdf`, token);
+    } catch (err: any) {
+      setMessage(`Error al descargar PDF General: ${err.message}`);
+    } finally {
+      setDownloadingGeneralPdf(false);
+    }
+  }
+
+  async function handleDownloadExecutivePdf() {
+    if (!token || !evaluationId) return;
+    setDownloadingExecutivePdf(true);
+    try {
+      await downloadFile(
+        `/evaluations/${evaluationId}/results/executive/pdf`,
+        `Reporte_Ejecutivo_360_${evaluation?.title?.replace(/\s+/g, "_") || "MSD"}.pdf`,
+        token
+      );
+    } catch (err: any) {
+      setMessage(`Error al descargar Reporte Ejecutivo (29 Páginas): ${err.message}`);
+    } finally {
+      setDownloadingExecutivePdf(false);
+    }
+  }
+
+  async function loadExecutiveReport(authToken = token) {
+    if (!authToken || !evaluationId) return;
+    setLoadingExecutive(true);
+    try {
+      const data = await api<ExecutiveReportResults>(
+        `/evaluations/${evaluationId}/results/executive`,
+        {},
+        authToken
+      );
+      setExecutiveResults(data);
+    } catch (err: any) {
+      setMessage(`Error al cargar datos del reporte ejecutivo: ${err.message}`);
+    } finally {
+      setLoadingExecutive(false);
+    }
+  }
+
+  async function handleDownloadParticipantPdf(participantId: string) {
+    if (!token || !evaluationId || !participantId) return;
+    setDownloadingParticipantPdf(true);
+    try {
+      await downloadFile(
+        `/evaluations/${evaluationId}/results/participant/${participantId}/pdf`,
+        `Informe_Individual_360.pdf`,
+        token
+      );
+    } catch (err: any) {
+      setMessage(`Error al descargar PDF Individual: ${err.message}`);
+    } finally {
+      setDownloadingParticipantPdf(false);
+    }
+  }
+
+  async function handleDownloadZip() {
+    if (!token || !evaluationId) return;
+    setDownloadingZip(true);
+    try {
+      await downloadFile(
+        `/evaluations/${evaluationId}/results/participants/pdf-zip`,
+        `Informes_Todos_Colaboradores.zip`,
+        token
+      );
+    } catch (err: any) {
+      setMessage(`Error al descargar ZIP Masivo: ${err.message}`);
+    } finally {
+      setDownloadingZip(false);
+    }
+  }
+
 
   const firstCompetency = competencies[0]?.id || "";
+
+  async function loadParticipantReport(participantId: string, authToken = token) {
+    if (!authToken || !participantId) return;
+    setLoadingParticipantReport(true);
+    try {
+      const data = await api<ParticipantDetailResults>(
+        `/evaluations/${evaluationId}/results/participant/${participantId}`,
+        {},
+        authToken
+      );
+      setParticipantReport(data);
+    } catch {
+      setParticipantReport(null);
+    } finally {
+      setLoadingParticipantReport(false);
+    }
+  }
+
+  useEffect(() => {
+    if (token && selectedParticipantForReport) {
+      void loadParticipantReport(selectedParticipantForReport, token);
+    }
+  }, [token, selectedParticipantForReport]);
+
+  useEffect(() => {
+    if (resultsSubTab === "participant" && participants.length > 0 && !selectedParticipantForReport) {
+      setSelectedParticipantForReport(participants[0].id);
+    }
+  }, [resultsSubTab, participants, selectedParticipantForReport]);
 
   async function loadSuggestedQuestions(competencyId: string, authToken = token) {
     if (!authToken || !competencyId) return;
@@ -99,6 +238,16 @@ export default function EvaluationDetail() {
     }
   }, [token, evaluationId]);
 
+  useEffect(() => {
+    if (participants.length > 0) {
+      if (!selectedEvaluateeId || !participants.some(p => p.id === selectedEvaluateeId)) {
+        setSelectedEvaluateeId(participants[0].id);
+      }
+    } else {
+      setSelectedEvaluateeId("");
+    }
+  }, [participants, selectedEvaluateeId]);
+
   async function refreshAll(authToken = token) {
     if (!authToken) return;
     setLoading(true);
@@ -137,6 +286,50 @@ export default function EvaluationDetail() {
       setResults(await api<EvaluationResults>(`/evaluations/${evaluationId}/results`, {}, authToken));
     } catch {
       setResults(null);
+    }
+  }
+
+  async function handleStatusChange(newStatus: string) {
+    if (!token || !evaluation) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const updated = await api<Evaluation>(
+        `/evaluations/${evaluationId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: newStatus }),
+        },
+        token
+      );
+      setEvaluation(updated);
+      setMessage("Estado de la evaluación actualizado correctamente.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo actualizar el estado");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAssessmentTypeChange(newType: string) {
+    if (!token || !evaluation) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const updated = await api<Evaluation>(
+        `/evaluations/${evaluationId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ assessment_type: newType }),
+        },
+        token
+      );
+      setEvaluation(updated);
+      setMessage("Tipo de assessment actualizado correctamente.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo actualizar el tipo de assessment");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -244,18 +437,24 @@ export default function EvaluationDetail() {
     setLoading(true);
     setMessage("");
     try {
+      let index = 0;
       for (const preset of selectedPresets) {
         await api(`/evaluations/${evaluationId}/questions`, {
           method: "POST",
           body: JSON.stringify({
             competency_id: targetCompetencyId,
             text: preset.text,
-            position: questions.length + 1,
+            text_self: preset.text_self || preset.text,
+            text_evaluator: preset.text_evaluator || preset.text,
+            tag_self: preset.tag_self || `P${questions.length + index + 1} Autoevaluado`,
+            tag_evaluator: preset.tag_evaluator || `P${questions.length + index + 1}B Evaluador`,
+            position: questions.length + index + 1,
             question_type: preset.question_type || "numeric_1_10",
             options: preset.options || null,
             is_evaluative: preset.is_evaluative !== undefined ? preset.is_evaluative : true,
           }),
         }, token);
+        index++;
       }
       setMessage(`Se agregaron ${selectedPresets.length} preguntas sugeridas.`);
       await refreshAll(token);
@@ -291,15 +490,12 @@ export default function EvaluationDetail() {
 
   async function addAssignment(event: FormEvent<HTMLFormElement>) {
     const data = new FormData(event.currentTarget);
-    const assignment = await postForm<Assignment>(`/evaluations/${evaluationId}/assignments`, event, {
+    await postForm<Assignment>(`/evaluations/${evaluationId}/assignments`, event, {
       evaluatee_id: data.get("evaluatee_id"),
       evaluator_id: data.get("evaluator_id"),
       relationship: data.get("relationship") || "peer",
       weight: Number(data.get("weight") || 100) / 100,
     });
-    if (assignment) {
-      setAssignments((current) => [assignment, ...current]);
-    }
   }
 
   async function generateToken(assignmentId: string) {
@@ -344,7 +540,17 @@ export default function EvaluationDetail() {
 
   async function deleteResource(path: string, label: string) {
     if (!token) return;
-    if (!window.confirm(`Eliminar ${label}? Esta accion no se puede deshacer.`)) return;
+    
+    let confirmMsg = `¿Eliminar ${label}? Esta acción no se puede deshacer.`;
+    if (label === "pregunta") {
+      confirmMsg = "¿Eliminar esta pregunta? Se borrarán de forma permanente todas las respuestas de encuestas y las estadísticas asociadas a esta pregunta. Esta acción no se puede deshacer.";
+    } else if (label === "competencia") {
+      confirmMsg = "¿Eliminar esta competencia? Se borrarán de forma permanente todas sus preguntas asociadas, respuestas de encuestas y estadísticas. Esta acción no se puede deshacer.";
+    } else if (label === "participante") {
+      confirmMsg = "¿Eliminar este participante? Se borrarán de forma permanente todas sus autoevaluaciones, relaciones de evaluadores y respuestas enviadas. Esta acción no se puede deshacer.";
+    }
+
+    if (!window.confirm(confirmMsg)) return;
     setLoading(true);
     setMessage("");
     try {
@@ -503,6 +709,47 @@ export default function EvaluationDetail() {
     }
   }
 
+  async function handleExportLinks() {
+    if (!token) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(
+        `${API_URL}/evaluations/${evaluationId}/assignments/export-links?frontend_url=${encodeURIComponent(window.location.origin)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error("No se pudieron exportar los links de las encuestas");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `links_encuestas_${evaluationId}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setMessage("Se exportaron los links de las encuestas en Excel.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Error al exportar links");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleCopy(text: string, id: string) {
+    void navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => {
+      setCopiedId((current) => (current === id ? null : current));
+    }, 2000);
+  }
+
   async function updateCompetency(event: FormEvent<HTMLFormElement>, competencyId: string) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -582,19 +829,38 @@ export default function EvaluationDetail() {
     [participants],
   );
 
-  const groupedAssignments = useMemo(() => {
-    const groups: Record<string, { evaluateeName: string; list: Assignment[] }> = {};
-    assignments.forEach((assignment) => {
-      const evaluatee = participants.find((p) => p.id === assignment.evaluatee_id);
-      const evaluateeName = evaluatee ? evaluatee.full_name : "Desconocido";
-      
-      if (!groups[assignment.evaluatee_id]) {
-        groups[assignment.evaluatee_id] = { evaluateeName, list: [] };
-      }
-      groups[assignment.evaluatee_id].list.push(assignment);
-    });
-    return Object.entries(groups);
+  const sortedAssignments = useMemo(() => {
+    return [...assignments]
+      .filter((a) => a.relationship !== "self")
+      .map((assignment) => {
+        const evaluatee = participants.find((p) => p.id === assignment.evaluatee_id);
+        const evaluator = participants.find((p) => p.id === assignment.evaluator_id);
+        return {
+          ...assignment,
+          evaluateeName: evaluatee ? evaluatee.full_name : "Desconocido",
+          evaluatorName: evaluator ? evaluator.full_name : "Desconocido",
+        };
+      }).sort((a, b) => {
+        const cmp = a.evaluateeName.localeCompare(b.evaluateeName);
+        if (cmp !== 0) return cmp;
+        return a.evaluatorName.localeCompare(b.evaluatorName);
+      });
   }, [assignments, participants]);
+
+  async function handleSeedDemo() {
+    if (!token) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const res = await api<{ message: string }>(`/evaluations/${evaluationId}/seed-demo`, { method: "POST" }, token);
+      setMessage(res.message || "Se cargaron 3 colaboradores ficticios con competencias y respuestas de ejemplo.");
+      await refreshAll(token);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Error al cargar datos de ejemplo");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (!token) {
     return (
@@ -611,26 +877,61 @@ export default function EvaluationDetail() {
     <main className="shell">
       <header className="topbar">
         <Link className="brand" href="/">
-          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 28, objectFit: "contain" }} />
+          <img src="/logo-mmarketing.png" alt="Mmarketing Logo" style={{ height: 32, width: "auto", objectFit: "contain" }} />
           <span>RRHH 360 AI</span>
         </Link>
-        <button className="button secondary" onClick={() => refreshAll()} type="button">
-          <RefreshCw size={16} />
-          Actualizar
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="button secondary" onClick={handleSeedDemo} disabled={loading} type="button" style={{ background: "var(--accent-soft)", color: "var(--accent-dark)", border: "1px solid #b8ddd6" }}>
+            ✨ Cargar Ejemplo (3 Colaboradores)
+          </button>
+          <button className="button secondary" onClick={() => refreshAll()} type="button">
+            <RefreshCw size={16} />
+            Actualizar
+          </button>
+        </div>
       </header>
 
       <section className="content">
         <div className="page-title">
           <div>
-            <Link className="muted" href="/">
-              <ArrowLeft size={14} /> Volver
-            </Link>
-            <span className="eyebrow">Evaluacion 360</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+              <Link className="muted" href="/" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <ArrowLeft size={14} /> Volver
+              </Link>
+              <span className="muted" style={{ opacity: 0.4 }}>|</span>
+              <span className="eyebrow" style={{ textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.5px" }}>Evaluación 360</span>
+            </div>
             <h1>{evaluation?.title || "Evaluacion"}</h1>
             <p className="muted">{evaluation?.description || "Sin descripcion"}</p>
           </div>
           <div className="toolbar">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="eyebrow" style={{ margin: 0, textTransform: "none", fontSize: "11px", fontWeight: "bold" }}>Tipo:</span>
+              <select
+                className="select"
+                style={{ minHeight: 28, height: 28, width: "auto", padding: "0 8px", fontSize: "0.75rem", fontWeight: "bold", border: "1px solid var(--line-strong)", borderRadius: "6px", cursor: "pointer", background: "var(--surface-soft)", color: "var(--text)" }}
+                value={evaluation?.assessment_type || "individual_contributor"}
+                onChange={(e) => handleAssessmentTypeChange(e.target.value)}
+                disabled={loading}
+              >
+                <option value="individual_contributor">Contribuidor Individual</option>
+                <option value="leader">Líder / Manager</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="eyebrow" style={{ margin: 0, textTransform: "none", fontSize: "11px", fontWeight: "bold" }}>Estado:</span>
+              <select
+                className="select"
+                style={{ minHeight: 28, height: 28, width: "auto", padding: "0 8px", fontSize: "0.75rem", fontWeight: "bold", border: "1px solid var(--line-strong)", borderRadius: "6px", cursor: "pointer", background: "var(--surface-soft)", color: "var(--text)" }}
+                value={evaluation?.status || "draft"}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                disabled={loading}
+              >
+                <option value="draft">Borrador</option>
+                <option value="active">Activa</option>
+                <option value="completed">Finalizada</option>
+              </select>
+            </div>
             <span className="status-pill">{competencies.length} competencias</span>
             <span className="status-pill">{participants.length} participantes</span>
           </div>
@@ -652,6 +953,13 @@ export default function EvaluationDetail() {
             type="button"
           >
             Participantes y Relaciones
+          </button>
+          <button
+            className={`page-tab ${activeTab === "dispatch" ? "active" : ""}`}
+            onClick={() => setActiveTab("dispatch")}
+            type="button"
+          >
+            Centro de Envíos
           </button>
           <button
             className={`page-tab ${activeTab === "results" ? "active" : ""}`}
@@ -859,7 +1167,12 @@ export default function EvaluationDetail() {
                   <input className="input" name="options_raw" placeholder="Opción A, Opción B, Opción C" />
                 </div>
                 <div className="field" style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 12 }}>
-                  <label>Uso Estadístico</label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>Uso Estadístico (Evaluativa vs Informativa)</span>
+                    <span title="Preguntas evaluativas impactan en las puntuaciones y promedios del reporte. Preguntas informativas solo recolectan comentarios cualitativos sin afectar los puntajes." style={{ cursor: "help", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", background: "#edf1f6", color: "#263244", fontSize: 10, fontWeight: "bold" }}>
+                      ?
+                    </span>
+                  </label>
                   <select className="select" defaultValue="true" name="is_evaluative" style={{ width: "100%", minHeight: 34, padding: "4px 8px" }}>
                     <option value="true">Sí (Evaluativa - suma al promedio de competencia)</option>
                     <option value="false">No (Informativa / Cualitativa únicamente)</option>
@@ -1004,7 +1317,12 @@ export default function EvaluationDetail() {
                           />
                         </div>
                         <div className="field">
-                          <label>Uso Estadístico</label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span>Uso Estadístico</span>
+                            <span title="Preguntas evaluativas impactan en las puntuaciones y promedios del reporte. Preguntas informativas solo recolectan comentarios cualitativos sin afectar los puntajes." style={{ cursor: "help", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", background: "#edf1f6", color: "#263244", fontSize: 10, fontWeight: "bold" }}>
+                              ?
+                            </span>
+                          </label>
                           <select className="select" defaultValue={String(question.is_evaluative ?? true)} name="is_evaluative">
                             <option value="true">Sí (Evaluativa - suma al promedio)</option>
                             <option value="false">No (Informativa - no suma al promedio)</option>
@@ -1184,19 +1502,48 @@ export default function EvaluationDetail() {
               </div>
             </section>
 
-            <section className="panel">
-              <h2>Asignaciones</h2>
+            <section className="panel panel-relations">
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <h2>Asignaciones</h2>
+                <button
+                  type="button"
+                  className="button secondary"
+                  style={{ fontSize: "0.8rem", padding: "6px 12px", margin: 0, display: "flex", alignItems: "center", gap: 4 }}
+                  onClick={handleExportLinks}
+                  disabled={loading || !assignments.length}
+                >
+                  <LinkIcon size={14} />
+                  Exportar Links (Excel)
+                </button>
+              </div>
               <form className="form" onSubmit={addAssignment} style={{ marginTop: 14 }}>
                 <div className="field">
                   <label>Evaluado</label>
-                  <select className="select" name="evaluatee_id" required>
-                    {participantOptions}
+                  <select 
+                    className="select" 
+                    name="evaluatee_id" 
+                    required
+                    value={selectedEvaluateeId}
+                    onChange={(e) => setSelectedEvaluateeId(e.target.value)}
+                  >
+                    {participants.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.full_name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="field">
                   <label>Evaluador</label>
                   <select className="select" name="evaluator_id" required>
-                    {participantOptions}
+                    <option value="">-- Selecciona --</option>
+                    {participants
+                      .filter((p) => p.id !== selectedEvaluateeId)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div className="field">
@@ -1220,196 +1567,1217 @@ export default function EvaluationDetail() {
                 </button>
               </form>
               <div className="list">
-                {groupedAssignments.map(([evaluateeId, group]) => (
-                  <div key={evaluateeId} style={{ marginBottom: 20, borderBottom: "1px solid var(--line)", paddingBottom: 14 }}>
-                    <h4 style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--accent-dark)", marginBottom: 8 }}>
-                      Colaborador: {group.evaluateeName}
-                    </h4>
-                    <div style={{ paddingLeft: 10 }}>
-                      {group.list.map((assignment) => {
-                        const evaluator = participants.find((p) => p.id === assignment.evaluator_id);
-                        const evaluatorName = evaluator ? evaluator.full_name : "Desconocido";
-                        
-                        const relFriendlyNames: Record<string, string> = {
-                          self: "Autoevaluación",
-                          peer: "Par",
-                          direct_report: "Reporte Directo",
-                          line_manager: "Líder directo",
-                          indirect_manager: "Líder indirecto",
-                          external_client: "Cliente Externo",
-                          internal_client: "Cliente Interno",
-                        };
-                        const relLabel = relFriendlyNames[assignment.relationship] || assignment.relationship;
+                {sortedAssignments.map((assignment) => {
+                  const relFriendlyNames: Record<string, string> = {
+                    self: "Autoevaluación",
+                    peer: "Par",
+                    direct_report: "Reporte Directo",
+                    line_manager: "Líder directo",
+                    indirect_manager: "Líder indirecto",
+                    external_client: "Cliente Externo",
+                    internal_client: "Cliente Interno",
+                  };
+                  const relLabel = relFriendlyNames[assignment.relationship] || assignment.relationship;
 
-                        return (
-                          <div className="item" key={assignment.id} style={{ marginTop: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <strong>{evaluatorName}</strong> 
-                              <span className="muted" style={{ marginLeft: 6, fontSize: "0.8rem" }}>({relLabel})</span>
-                              <span className="status-pill" style={{ marginLeft: 8, fontSize: "0.75rem", padding: "1px 5px" }}>Peso: {Math.round(Number(assignment.weight) * 100)}%</span>
-                            </div>
-                            <div className="toolbar" style={{ gap: 6 }}>
-                              <button className="button secondary" onClick={() => generateToken(assignment.id)} type="button" style={{ minHeight: 30, height: 30, padding: "2px 8px", fontSize: "0.75rem" }}>
-                                <LinkIcon size={12} />
-                                Copiar Link
-                              </button>
-                              <button
-                                className="button danger"
-                                onClick={() => deleteResource(`/evaluations/${evaluationId}/assignments/${assignment.id}`, "asignación")}
-                                type="button"
-                                style={{ minHeight: 30, height: 30, padding: "2px 8px", fontSize: "0.75rem" }}
-                              >
-                                <Trash2 size={12} />
-                                Borrar
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                  return (
+                    <div 
+                      className="item" 
+                      key={assignment.id} 
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                    >
+                      <div>
+                        <strong>{assignment.evaluatorName}</strong>
+                        <span className="muted" style={{ margin: "0 6px" }}>evalúa a</span>
+                        <strong>{assignment.evaluateeName}</strong>
+                        <span className="muted" style={{ marginLeft: 6, fontSize: "0.8rem" }}>({relLabel})</span>
+                        <span className="status-pill" style={{ marginLeft: 8, fontSize: "0.75rem", padding: "1px 5px" }}>
+                          Peso: {Math.round(Number(assignment.weight) * 100)}%
+                        </span>
+                      </div>
+                      <div className="toolbar" style={{ gap: 6 }}>
+                        <button
+                          className="button danger"
+                          onClick={() => deleteResource(`/evaluations/${evaluationId}/assignments/${assignment.id}`, "asignación")}
+                          type="button"
+                          style={{ minHeight: 30, height: 30, padding: "2px 8px", fontSize: "0.75rem" }}
+                        >
+                          <Trash2 size={12} />
+                          Borrar
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {!assignments.length && <div className="empty-state">Crea asignaciones para generar links publicos.</div>}
+                  );
+                })}
+                {!sortedAssignments.length && <div className="empty-state">No hay relaciones configuradas aún.</div>}
               </div>
             </section>
           </div>
         )}
 
-        {activeTab === "results" && (
-          <>
-            <div className="kpi-band">
-              <section className="panel metric">
-                <span className="muted">Promedio</span>
-                <strong>{results?.average ?? 0}</strong>
-              </section>
-              <section className="panel metric">
-                <span className="muted">Mediana</span>
-                <strong>{results?.median ?? 0}</strong>
-              </section>
-              <section className="panel metric">
-                <span className="muted">Desvio</span>
-                <strong>{results?.stddev ?? 0}</strong>
-              </section>
+        {activeTab === "dispatch" && (
+          <div className="dispatch-container">
+            <div className="panel" style={{ background: "var(--accent-soft)", borderColor: "var(--line-strong)", color: "var(--text)", borderRadius: 12, padding: "16px 20px" }}>
+              <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem", color: "var(--accent-dark)" }}>Centro de Envíos de Encuestas</h4>
+              <p style={{ margin: "6px 0 0", fontSize: "0.85rem", lineHeight: 1.4, color: "var(--text)" }}>
+                Cada colaborador cuenta con dos tipos de encuestas: su <strong>Autoevaluación</strong> (personal y obligatoria, que se genera automáticamente al registrar al participante) y las encuestas de sus <strong>Evaluadores asignados</strong> (creadas en la sección de relaciones). Puedes copiar los enlaces individualmente aquí o exportar el listado completo a un archivo Excel.
+              </p>
+            </div>
+            <div className="panel" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+              <div className="dispatch-search-box">
+                <Search size={16} className="dispatch-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Buscar colaborador..."
+                  className="input dispatch-search-input"
+                  value={dispatchSearch}
+                  onChange={(e) => setDispatchSearch(e.target.value)}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div className="toggle-group">
+                  <button
+                    type="button"
+                    className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
+                    onClick={() => setViewMode("table")}
+                    title="Vista Planilla"
+                  >
+                    <Table size={14} />
+                    Planilla
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
+                    onClick={() => setViewMode("cards")}
+                    title="Vista Mosaicos"
+                  >
+                    <LayoutGrid size={14} />
+                    Mosaicos
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="button"
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  onClick={handleExportLinks}
+                  disabled={loading || !assignments.length}
+                >
+                  <LinkIcon size={14} />
+                  Exportar Todos los Links (Excel)
+                </button>
+              </div>
             </div>
 
-            <div className="grid two" style={{ marginTop: 18 }}>
-              <section className="panel">
-                <h2>Promedios por Competencia</h2>
-                <div className="list">
-                  {results?.competencies.map((competency) => (
-                    <div className="item" key={competency.competency_id}>
-                      <div className="row">
-                        <strong>{competency.competency_name}</strong>
-                        <span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-dark)" }}>Promedio: {competency.average}</span>
-                      </div>
-                      <span className="muted" style={{ fontSize: "0.85rem" }}>
-                        Mediana: {competency.median} | Desvío: {competency.stddev} | Respuestas: {competency.responses}
-                      </span>
-                    </div>
-                  ))}
-                  {!results?.competencies.length && <p className="muted">No hay respuestas cargadas aún.</p>}
-                </div>
-              </section>
+            {participants.length === 0 ? (
+              <div className="empty-state">No hay participantes registrados en esta evaluación. Agrégalos en la pestaña de Participantes.</div>
+            ) : (
+              (() => {
+                const filtered = participants.filter(
+                  (p) =>
+                    p.full_name.toLowerCase().includes(dispatchSearch.toLowerCase()) ||
+                    p.email.toLowerCase().includes(dispatchSearch.toLowerCase())
+                );
 
-              <section className="panel">
-                <h2>Ranking de Participantes</h2>
-                <div className="list">
-                  {results?.ranking.map((row) => (
-                    <div className="item" key={row.participant_id}>
-                      <div className="row">
-                        <strong>
-                          #{row.rank} {row.participant_name}
-                        </strong>
-                        <span className="status-pill" style={{ background: "var(--accent)", color: "#fff" }}>Score: {row.average}</span>
-                      </div>
-                    </div>
-                  ))}
-                  {!results?.ranking.length && <p className="muted">No hay rankings disponibles.</p>}
-                </div>
-              </section>
-            </div>
+                if (filtered.length === 0) {
+                  return <div className="empty-state">No se encontraron colaboradores que coincidan con la búsqueda.</div>;
+                }
 
-            <section className="panel" style={{ marginTop: 18 }}>
-              <h2>Desglose Estadístico por Pregunta</h2>
-              <div className="list">
-                {results?.questions?.map((q) => {
-                  const distributionEntries = Object.entries(q.distribution || {});
-                  const totalAnswers = distributionEntries.reduce((a, b) => a + b[1], 0);
-                  
-                  // Calculate NPS score if question type is nps
-                  let npsScore: number | null = null;
-                  if (q.question_type === "nps" && totalAnswers > 0) {
-                    const promoters = q.distribution["Promotores (9-10)"] || 0;
-                    const detractors = q.distribution["Detractores (0-6)"] || 0;
-                    npsScore = Math.round(((promoters - detractors) / totalAnswers) * 100);
-                  }
+                const relFriendlyNames: Record<string, string> = {
+                  self: "Autoevaluación",
+                  peer: "Par",
+                  direct_report: "Reporte Directo",
+                  line_manager: "Líder directo",
+                  indirect_manager: "Líder indirecto",
+                  external_client: "Cliente Externo",
+                  internal_client: "Cliente Interno",
+                };
 
+                if (viewMode === "table") {
                   return (
-                    <div className="item" key={q.question_id} style={{ display: "block" }}>
-                      <div className="row" style={{ alignItems: "flex-start", marginBottom: 8 }}>
-                        <div>
-                          <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px" }}>{q.competency_name}</span>
-                          <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px" }}>{q.question_type}</span>
-                          {q.is_evaluative ? (
-                            <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px", background: "var(--accent-soft)", color: "var(--accent-dark)", border: "1px solid #b8ddd6" }}>Evaluativa</span>
-                          ) : (
-                            <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px", background: "#edf1f6", color: "#263244" }}>Informativa</span>
-                          )}
-                          <h4 style={{ marginTop: 8, fontSize: "1.05rem", fontWeight: 700 }}>{q.question_text}</h4>
-                        </div>
-                        {q.is_evaluative && q.average !== null && (
-                          <div style={{ textAlign: "right", minWidth: 80 }}>
-                            <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: "var(--accent-dark)" }}>
-                              {q.average}
-                            </div>
-                            <span className="muted" style={{ fontSize: "0.75rem" }}>Promedio</span>
-                          </div>
-                        )}
-                        {q.question_type === "nps" && npsScore !== null && (
-                          <div style={{ textAlign: "right", minWidth: 80, marginLeft: 12 }}>
-                            <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: npsScore >= 30 ? "var(--accent)" : npsScore >= 0 ? "orange" : "var(--danger)" }}>
-                              {npsScore > 0 ? `+${npsScore}` : npsScore}
-                            </div>
-                            <span className="muted" style={{ fontSize: "0.75rem" }}>NPS Score</span>
-                          </div>
-                        )}
-                      </div>
+                    <div className="dispatch-table-container">
+                      <table className="dispatch-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: "35%" }}>Colaborador (Evaluado)</th>
+                            <th style={{ width: "25%" }}>Autoevaluación</th>
+                            <th style={{ width: "25%" }}>Progreso Espejo</th>
+                            <th style={{ width: "15%", textAlign: "center" }}>Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((participant) => {
+                            const participantAssignments = assignments.filter((a) => a.evaluatee_id === participant.id);
+                            
+                            // Autoevaluación assignment
+                            const selfAssignment = participantAssignments.find((a) => a.relationship === "self");
+                            const isSelfCompleted = selfAssignment?.is_completed ?? false;
+                            const selfLink = selfAssignment?.survey_token ? `${window.location.origin}/survey/${selfAssignment.survey_token}` : "";
 
-                      {q.is_evaluative && q.average !== null && (
-                        <p className="muted" style={{ fontSize: "0.8rem", marginBottom: 12 }}>
-                          Mediana: {q.median} | Desvío: {q.stddev} | Respuestas: {q.responses_count}
-                        </p>
-                      )}
+                            // Evaluadores (relaciones espejo)
+                            const mirrorAssignments = participantAssignments.filter((a) => a.relationship !== "self");
+                            const totalMirror = mirrorAssignments.length;
+                            const completedMirror = mirrorAssignments.filter((a) => a.is_completed).length;
+                            const progressPercent = totalMirror > 0 ? Math.round((completedMirror / totalMirror) * 100) : 0;
 
-                      <div style={{ marginTop: 12, background: "rgba(0,0,0,0.012)", padding: 12, borderRadius: 6, border: "1px solid var(--line)" }}>
-                        <span className="muted" style={{ fontSize: "0.75rem", display: "block", marginBottom: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                          Distribución de Respuestas ({totalAnswers} en total):
-                        </span>
-                        {distributionEntries.map(([opt, count]) => {
-                          const percentage = totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0;
-                          return (
-                            <div key={opt} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                              <span style={{ width: 160, fontSize: "0.8rem", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={opt}>
-                                {opt}
-                              </span>
-                              <div style={{ flex: 1, height: 12, background: "rgba(0,0,0,0.05)", borderRadius: 6, overflow: "hidden" }}>
-                                <div style={{ width: `${percentage}%`, height: "100%", background: "var(--accent)", borderRadius: 6, transition: "width 0.4s ease" }} />
-                              </div>
-                              <span style={{ width: 90, fontSize: "0.8rem", fontWeight: "bold", textAlign: "right" }}>
-                                {percentage}% ({count})
-                              </span>
-                            </div>
-                          );
-                        })}
-                        {totalAnswers === 0 && <p className="muted" style={{ fontSize: "0.8rem" }}>Sin respuestas registradas.</p>}
-                      </div>
+                            const isExpanded = !!expandedEvaluatees[participant.id];
+
+                            const toggleExpand = (e: React.MouseEvent) => {
+                              // Evitar que el clic en un botón propague el clic a la fila
+                              if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('a')) {
+                                return;
+                              }
+                              setExpandedEvaluatees((prev) => ({
+                                ...prev,
+                                [participant.id]: !prev[participant.id],
+                              }));
+                            };
+
+                            return (
+                              <Fragment key={participant.id}>
+                                <tr 
+                                  className={`evaluatee-row ${isExpanded ? "expanded" : ""}`}
+                                  onClick={toggleExpand}
+                                >
+                                  <td>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                      <span style={{ fontWeight: 800, fontSize: "14px" }}>{participant.full_name}</span>
+                                      <span className="muted" style={{ fontSize: "11px" }}>{participant.role || "Sin rol definido"} • {participant.email}</span>
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                      <span className={`dispatch-status ${isSelfCompleted ? "completed" : "pending"}`} style={{ fontSize: "9px" }}>
+                                        {isSelfCompleted ? "Completada" : "Pendiente"}
+                                      </span>
+                                      {selfAssignment && selfLink && (
+                                        <div style={{ display: "flex", gap: 4 }}>
+                                          <button
+                                            onClick={() => handleCopy(selfLink, selfAssignment.id)}
+                                            className={`copy-btn-interactive ${copiedId === selfAssignment.id ? "copied" : ""}`}
+                                            style={{ minHeight: "24px", height: "24px", padding: "2px 6px", fontSize: "10px" }}
+                                            title="Copiar link autoevaluación"
+                                          >
+                                            {copiedId === selfAssignment.id ? <Check size={10} /> : <Copy size={10} />}
+                                            {copiedId === selfAssignment.id ? "Copiado" : "Copiar"}
+                                          </button>
+                                          <a href={selfLink} target="_blank" rel="noreferrer" className="copy-btn-interactive" style={{ minHeight: "24px", height: "24px", width: "24px", padding: 0 }} title="Ver encuesta en vivo">
+                                            <ExternalLink size={10} />
+                                          </a>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", fontWeight: "bold" }}>
+                                        <span className="muted">{completedMirror} de {totalMirror} completadas</span>
+                                        <span style={{ color: "var(--accent-dark)" }}>{progressPercent}%</span>
+                                      </div>
+                                      <div className="progress-track">
+                                        <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ textAlign: "center" }}>
+                                    <button
+                                      type="button"
+                                      className="button secondary"
+                                      onClick={() => setExpandedEvaluatees((prev) => ({ ...prev, [participant.id]: !prev[participant.id] }))}
+                                      style={{ minHeight: "28px", height: "28px", padding: "4px 10px", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                    >
+                                      {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                      {isExpanded ? "Ocultar" : `Evaluadores (${totalMirror})`}
+                                    </button>
+                                  </td>
+                                </tr>
+
+                                {isExpanded && (
+                                  <tr className="expanded-row">
+                                    <td colSpan={4}>
+                                      <div className="expanded-row-content">
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                          <h5 style={{ margin: 0, fontSize: "11px", textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.5px" }}>
+                                            Evaluadores asignados para {participant.full_name}
+                                          </h5>
+                                        </div>
+                                        {totalMirror === 0 ? (
+                                          <div style={{ textAlign: "center", padding: "12px", color: "var(--muted)", fontStyle: "italic", fontSize: "12px" }}>
+                                            No se han asignado evaluadores para este colaborador.
+                                          </div>
+                                        ) : (
+                                          <div className="expanded-grid">
+                                            {mirrorAssignments.map((assignment) => {
+                                              const evaluator = participants.find((p) => p.id === assignment.evaluator_id);
+                                              const evaluatorName = evaluator ? evaluator.full_name : "Desconocido";
+                                              const link = assignment.survey_token ? `${window.location.origin}/survey/${assignment.survey_token}` : "";
+                                              const isComp = assignment.is_completed ?? false;
+
+                                              return (
+                                                <div className="expanded-card" key={assignment.id}>
+                                                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flexGrow: 1 }}>
+                                                    <span style={{ fontWeight: 700, fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={evaluatorName}>
+                                                      {evaluatorName}
+                                                    </span>
+                                                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                                      <span className="dispatch-relationship">
+                                                        {relFriendlyNames[assignment.relationship] || assignment.relationship}
+                                                      </span>
+                                                      <span className={`dispatch-status ${isComp ? "completed" : "pending"}`} style={{ fontSize: "8px", padding: "1px 5px" }}>
+                                                        {isComp ? "Completada" : "Pendiente"}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                  {link && (
+                                                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                                                      <button
+                                                        onClick={() => handleCopy(link, assignment.id)}
+                                                        className={`copy-btn-interactive ${copiedId === assignment.id ? "copied" : ""}`}
+                                                        style={{ minHeight: "24px", height: "24px", padding: "2px 6px", fontSize: "10px" }}
+                                                      >
+                                                        {copiedId === assignment.id ? <Check size={10} /> : <Copy size={10} />}
+                                                        {copiedId === assignment.id ? "Copiado" : "Copiar"}
+                                                      </button>
+                                                      <a href={link} target="_blank" rel="noreferrer" className="copy-btn-interactive" style={{ minHeight: "24px", height: "24px", width: "24px", padding: 0 }} title="Ver encuesta en vivo">
+                                                        <ExternalLink size={10} />
+                                                      </a>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   );
-                })}
-                {!results?.questions?.length && <p className="muted">No hay estadísticas de preguntas cargadas.</p>}
+                }
+
+                return (
+                  <div className="dispatch-grid">
+                    {filtered.map((participant) => {
+                      const participantAssignments = assignments.filter((a) => a.evaluatee_id === participant.id);
+                      
+                      // Autoevaluación assignment
+                      const selfAssignment = participantAssignments.find((a) => a.relationship === "self");
+                      const isSelfCompleted = selfAssignment?.is_completed ?? false;
+                      const selfLink = selfAssignment?.survey_token ? `${window.location.origin}/survey/${selfAssignment.survey_token}` : "";
+
+                      // Evaluadores (relaciones espejo)
+                      const mirrorAssignments = participantAssignments.filter((a) => a.relationship !== "self");
+                      const totalMirror = mirrorAssignments.length;
+                      const completedMirror = mirrorAssignments.filter((a) => a.is_completed).length;
+
+                      const progressPercent = totalMirror > 0 ? Math.round((completedMirror / totalMirror) * 100) : 0;
+                      
+                      const initials = participant.full_name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase();
+
+                      return (
+                        <div className="dispatch-card" key={participant.id}>
+                          <div className="dispatch-card-header">
+                            <div className="dispatch-avatar">{initials}</div>
+                            <div className="dispatch-user-info">
+                              <span className="dispatch-name" title={participant.full_name}>{participant.full_name}</span>
+                              <span className="dispatch-role" title={participant.role || "Sin rol"}>{participant.role || "Sin rol definido"}</span>
+                              <span className="muted" style={{ fontSize: "11px" }}>{participant.email}</span>
+                            </div>
+                          </div>
+
+                          {/* Autoevaluación Section */}
+                          <div className="dispatch-section">
+                            <div className="dispatch-section-header">
+                              <span className="dispatch-section-title">Autoevaluación</span>
+                              <span className={`dispatch-status ${isSelfCompleted ? "completed" : "pending"}`}>
+                                {isSelfCompleted ? "Completada" : "Pendiente"}
+                              </span>
+                            </div>
+                            {selfAssignment && selfLink ? (
+                              <div className="dispatch-row" style={{ padding: "4px 0" }}>
+                                <span className="muted" style={{ fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "160px" }} title={selfLink}>
+                                  {selfLink}
+                                </span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <button
+                                    onClick={() => handleCopy(selfLink, selfAssignment.id)}
+                                    className={`copy-btn-interactive ${copiedId === selfAssignment.id ? "copied" : ""}`}
+                                    title="Copiar link de autoevaluación"
+                                  >
+                                    {copiedId === selfAssignment.id ? <Check size={12} /> : <Copy size={12} />}
+                                    {copiedId === selfAssignment.id ? "Copiado" : "Copiar"}
+                                  </button>
+                                  <a href={selfLink} target="_blank" rel="noreferrer" className="copy-btn-interactive" title="Ver encuesta en vivo">
+                                    <ExternalLink size={12} />
+                                  </a>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="muted" style={{ fontSize: "12px" }}>No configurada</span>
+                            )}
+                          </div>
+
+                          {/* Mirror/Evaluator Progress Section */}
+                          <div className="dispatch-section">
+                            <div className="dispatch-section-header">
+                              <span className="dispatch-section-title">Evaluadores ({totalMirror})</span>
+                              <span className="muted" style={{ fontSize: "12px", fontWeight: "700" }}>{completedMirror} de {totalMirror}</span>
+                            </div>
+                            <div className="progress-track" style={{ margin: "4px 0" }}>
+                              <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+                            </div>
+                            <div className="progress-header">
+                              <span className="muted" style={{ fontSize: "11px" }}>Progreso espejo</span>
+                              <span style={{ color: "var(--accent-dark)", fontSize: "11px" }}>{progressPercent}%</span>
+                            </div>
+                          </div>
+
+                          {/* Evaluators relationships detail list */}
+                          <div className="dispatch-section" style={{ flexGrow: 1 }}>
+                            <span className="dispatch-section-title" style={{ marginBottom: 4 }}>Detalle Relaciones</span>
+                            {totalMirror === 0 ? (
+                              <span className="muted" style={{ fontSize: "12px", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>
+                                Sin evaluadores asignados
+                              </span>
+                            ) : (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "200px", overflowY: "auto", paddingRight: "4px" }}>
+                                {mirrorAssignments.map((assignment) => {
+                                  const evaluator = participants.find((p) => p.id === assignment.evaluator_id);
+                                  const evaluatorName = evaluator ? evaluator.full_name : "Desconocido";
+                                  const link = assignment.survey_token ? `${window.location.origin}/survey/${assignment.survey_token}` : "";
+                                  const isComp = assignment.is_completed ?? false;
+
+                                  return (
+                                    <div className="dispatch-row" key={assignment.id} style={{ borderBottom: "1px solid rgba(216, 222, 232, 0.3)", paddingBottom: "6px" }}>
+                                      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flexGrow: 1 }}>
+                                        <span style={{ fontWeight: 700, fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={evaluatorName}>
+                                          {evaluatorName}
+                                        </span>
+                                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                          <span className="dispatch-relationship">
+                                            {relFriendlyNames[assignment.relationship] || assignment.relationship}
+                                          </span>
+                                          <span className={`dispatch-status ${isComp ? "completed" : "pending"}`} style={{ fontSize: "8px", padding: "1px 5px" }}>
+                                            {isComp ? "Listo" : "Pendiente"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {link ? (
+                                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                                          <button
+                                            onClick={() => handleCopy(link, assignment.id)}
+                                            className={`copy-btn-interactive ${copiedId === assignment.id ? "copied" : ""}`}
+                                            style={{ minHeight: "24px", height: "24px", padding: "2px 6px", fontSize: "10px" }}
+                                            title="Copiar enlace"
+                                          >
+                                            {copiedId === assignment.id ? <Check size={10} /> : <Copy size={10} />}
+                                            {copiedId === assignment.id ? "Copiado" : "Copiar"}
+                                          </button>
+                                          <a href={link} target="_blank" rel="noreferrer" className="copy-btn-interactive" style={{ minHeight: "24px", height: "24px", width: "24px", padding: 0 }} title="Ver encuesta en vivo">
+                                            <ExternalLink size={10} />
+                                          </a>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            )}
+          </div>
+        )}
+
+        {activeTab === "results" && (
+          <div className="results-container">
+            {/* Sub-tab navigation selector & Export Actions */}
+            <div className="panel" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, padding: "12px 16px", flexWrap: "wrap", gap: 12 }}>
+              <div className="toggle-group" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`toggle-btn ${resultsSubTab === "general" ? "active" : ""}`}
+                  onClick={() => setResultsSubTab("general")}
+                  style={{ padding: "6px 14px", fontSize: "0.85rem", fontWeight: "bold" }}
+                >
+                  📊 Vista General
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${resultsSubTab === "participant" ? "active" : ""}`}
+                  onClick={() => setResultsSubTab("participant")}
+                  style={{ padding: "6px 14px", fontSize: "0.85rem", fontWeight: "bold" }}
+                >
+                  👤 Por Colaborador
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${resultsSubTab === "executive" ? "active" : ""}`}
+                  onClick={() => {
+                    setResultsSubTab("executive");
+                    if (!executiveResults) void loadExecutiveReport();
+                  }}
+                  style={{
+                    padding: "6px 14px",
+                    fontSize: "0.85rem",
+                    fontWeight: "bold",
+                    background: resultsSubTab === "executive" ? "#00857c" : undefined,
+                    color: resultsSubTab === "executive" ? "#ffffff" : undefined,
+                  }}
+                >
+                  📑 Reporte Ejecutivo 360° (MSD 29P)
+                </button>
               </div>
-            </section>
-          </>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {resultsSubTab === "participant" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="eyebrow" style={{ margin: 0, textTransform: "none", fontSize: "12px", fontWeight: "bold" }}>Colaborador:</span>
+                    <select
+                      className="select"
+                      style={{ minWidth: 200, height: 36, padding: "0 10px", fontSize: "0.85rem", fontWeight: "bold", border: "1px solid var(--line-strong)", borderRadius: "8px", cursor: "pointer" }}
+                      value={selectedParticipantForReport}
+                      onChange={(e) => setSelectedParticipantForReport(e.target.value)}
+                    >
+                      <option value="">-- Selecciona un colaborador --</option>
+                      {participants.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name} ({p.role || "Sin rol"})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={handleDownloadExecutivePdf}
+                  disabled={downloadingExecutivePdf}
+                  style={{
+                    height: 36,
+                    fontSize: "0.82rem",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "0 12px",
+                    background: "#00857c",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    boxShadow: "0 2px 4px rgba(0,133,124,0.2)",
+                    cursor: "pointer",
+                  }}
+                  title="Descargar Reporte Ejecutivo Oficial de 29 páginas idéntico al formato original"
+                >
+                  <FileText size={15} />
+                  {downloadingExecutivePdf ? "Generando 29 Págs..." : "Reporte Ejecutivo (PDF 29P)"}
+                </button>
+
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={handleDownloadGeneralPdf}
+                  disabled={downloadingGeneralPdf}
+                  style={{ height: 36, fontSize: "0.82rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6, padding: "0 12px", border: "1px solid var(--accent)", color: "var(--accent-dark)", background: "var(--accent-soft)" }}
+                  title="Descargar Informe General en PDF"
+                >
+                  <FileText size={15} />
+                  {downloadingGeneralPdf ? "Generando PDF..." : "PDF General"}
+                </button>
+
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={handleDownloadZip}
+                  disabled={downloadingZip}
+                  style={{ height: 36, fontSize: "0.82rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6, padding: "0 12px", border: "1px solid var(--line-strong)", background: "#ffffff", color: "var(--foreground)" }}
+                  title="Descargar ZIP con los PDFs de todos los colaboradores"
+                >
+                  <FileArchive size={15} />
+                  {downloadingZip ? "Generando ZIP..." : "Todos (ZIP)"}
+                </button>
+              </div>
+            </div>
+
+
+            {resultsSubTab === "general" && (
+              <>
+                {results?.outliers && results.outliers.length > 0 && (
+                  <div className="panel" style={{ background: "#fff8e6", border: "1px solid #ffe58f", borderRadius: 12, padding: "16px 20px", marginBottom: 18 }}>
+                    <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem", color: "#b78103", display: "flex", alignItems: "center", gap: 8 }}>
+                      ⚠️ Alertas de Picos en Evaluaciones ({results.outliers.length})
+                    </h4>
+                    <p style={{ margin: "4px 0 12px", fontSize: "0.85rem", color: "#594206" }}>
+                      Se han detectado discrepancias significativas en las calificaciones otorgadas por algunos evaluadores respecto al consenso del grupo:
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {results.outliers.map((alert, idx) => (
+                        <div key={idx} style={{ background: "#ffffff", padding: "10px 14px", borderRadius: 8, border: "1px solid #ffd591", fontSize: "0.85rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <strong>{alert.evaluator_name}</strong> → <strong>{alert.evaluatee_name}</strong>
+                            <p style={{ margin: "2px 0 0", color: "#666", fontSize: "0.8rem" }}>{alert.message}</p>
+                          </div>
+                          <span className="status-pill" style={{ background: alert.alert_type === "high_outlier" ? "var(--accent-soft)" : "#fff1f0", color: alert.alert_type === "high_outlier" ? "var(--accent-dark)" : "#cf1322", border: alert.alert_type === "high_outlier" ? "1px solid #b8ddd6" : "1px solid #ffa39e", fontWeight: "bold", fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                            {alert.alert_type === "high_outlier" ? "Pico Positivo (+)" : "Pico Negativo (-)"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="kpi-band">
+                  <section className="panel metric">
+                    <span className="muted">Promedio</span>
+                    <strong>{results?.average ?? 0}</strong>
+                  </section>
+                  <section className="panel metric">
+                    <span className="muted">Mediana</span>
+                    <strong>{results?.median ?? 0}</strong>
+                  </section>
+                  <section className="panel metric">
+                    <span className="muted">Desvio</span>
+                    <strong>{results?.stddev ?? 0}</strong>
+                  </section>
+                </div>
+
+                <div className="grid two" style={{ marginTop: 18 }}>
+                  <section className="panel">
+                    <h2>Promedios por Competencia</h2>
+                    <div className="list">
+                      {results?.competencies.map((competency) => (
+                        <div className="item" key={competency.competency_id}>
+                          <div className="row">
+                            <strong>{competency.competency_name}</strong>
+                            <span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-dark)" }}>Promedio: {competency.average}</span>
+                          </div>
+                          <span className="muted" style={{ fontSize: "0.85rem" }}>
+                            Mediana: {competency.median} | Desvío: {competency.stddev} | Respuestas: {competency.responses}
+                          </span>
+                        </div>
+                      ))}
+                      {!results?.competencies.length && <p className="muted">No hay respuestas cargadas aún.</p>}
+                    </div>
+                  </section>
+
+                  <section className="panel">
+                    <h2>Ranking de Participantes</h2>
+                    <div className="list">
+                      {results?.ranking.map((row) => (
+                        <div className="item" key={row.participant_id}>
+                          <div className="row">
+                            <strong>
+                              #{row.rank} {row.participant_name}
+                            </strong>
+                            <span className="status-pill" style={{ background: "var(--accent)", color: "#fff" }}>Score: {row.average}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {!results?.ranking.length && <p className="muted">No hay rankings disponibles.</p>}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="panel" style={{ marginTop: 18 }}>
+                  <h2>Desglose Estadístico por Pregunta</h2>
+                  <div className="list">
+                    {results?.questions?.map((q) => {
+                      const distributionEntries = Object.entries(q.distribution || {});
+                      const totalAnswers = distributionEntries.reduce((a, b) => a + b[1], 0);
+                      
+                      let npsScore: number | null = null;
+                      if (q.question_type === "nps" && totalAnswers > 0) {
+                        const promoters = q.distribution["Promotores (9-10)"] || 0;
+                        const detractors = q.distribution["Detractores (0-6)"] || 0;
+                        npsScore = Math.round(((promoters - detractors) / totalAnswers) * 100);
+                      }
+
+                      return (
+                        <div className="item" key={q.question_id} style={{ display: "block" }}>
+                          <div className="row" style={{ alignItems: "flex-start", marginBottom: 8 }}>
+                            <div>
+                              <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px" }}>{q.competency_name}</span>
+                              <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px" }}>{q.question_type}</span>
+                              {q.is_evaluative ? (
+                                <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px", background: "var(--accent-soft)", color: "var(--accent-dark)", border: "1px solid #b8ddd6" }}>Evaluativa</span>
+                              ) : (
+                                <span className="status-pill" style={{ marginRight: 6, fontSize: "0.75rem", padding: "2px 6px", background: "#edf1f6", color: "#263244" }}>Informativa</span>
+                              )}
+                              <h4 style={{ marginTop: 8, fontSize: "1.05rem", fontWeight: 700 }}>{q.question_text}</h4>
+                            </div>
+                            {q.is_evaluative && q.average !== null && (
+                              <div style={{ textAlign: "right", minWidth: 80 }}>
+                                <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: "var(--accent-dark)" }}>
+                                  {q.average}
+                                </div>
+                                <span className="muted" style={{ fontSize: "0.75rem" }}>Promedio</span>
+                              </div>
+                            )}
+                            {q.question_type === "nps" && npsScore !== null && (
+                              <div style={{ textAlign: "right", minWidth: 80, marginLeft: 12 }}>
+                                <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: npsScore >= 30 ? "var(--accent)" : npsScore >= 0 ? "orange" : "var(--danger)" }}>
+                                  {npsScore > 0 ? `+${npsScore}` : npsScore}
+                                </div>
+                                <span className="muted" style={{ fontSize: "0.75rem" }}>NPS Score</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {q.is_evaluative && q.average !== null && (
+                            <p className="muted" style={{ fontSize: "0.8rem", marginBottom: 12 }}>
+                              Mediana: {q.median} | Desvío: {q.stddev} | Respuestas: {q.responses_count}
+                            </p>
+                          )}
+
+                          <div style={{ marginTop: 12, background: "rgba(0,0,0,0.012)", padding: 12, borderRadius: 6, border: "1px solid var(--line)" }}>
+                            <span className="muted" style={{ fontSize: "0.75rem", display: "block", marginBottom: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                              Distribución de Respuestas ({totalAnswers} en total):
+                            </span>
+                            {distributionEntries.map(([opt, count]) => {
+                              const percentage = totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0;
+                              return (
+                                <div key={opt} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                                  <span style={{ width: 160, fontSize: "0.8rem", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={opt}>
+                                    {opt}
+                                  </span>
+                                  <div style={{ flex: 1, height: 12, background: "rgba(0,0,0,0.05)", borderRadius: 6, overflow: "hidden" }}>
+                                    <div style={{ width: `${percentage}%`, height: "100%", background: "var(--accent)", borderRadius: 6, transition: "width 0.4s ease" }} />
+                                  </div>
+                                  <span style={{ width: 90, fontSize: "0.8rem", fontWeight: "bold", textAlign: "right" }}>
+                                    {percentage}% ({count})
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {totalAnswers === 0 && <p className="muted" style={{ fontSize: "0.8rem" }}>Sin respuestas registradas.</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!results?.questions?.length && <p className="muted">No hay estadísticas de preguntas cargadas.</p>}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {resultsSubTab === "participant" && (
+              <div>
+                {loadingParticipantReport ? (
+                  <div className="empty-state">Cargando reporte individual del colaborador...</div>
+                ) : !participantReport ? (
+                  <div className="empty-state">Selecciona un colaborador para consultar su informe estadístico 360°.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                    {/* Header del Colaborador */}
+                    <div className="panel" style={{ background: "var(--surface-soft)", borderRadius: 12, padding: "18px 22px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                        <div>
+                          <span className="eyebrow" style={{ textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.5px" }}>Reporte Individual 360°</span>
+                          <h2 style={{ margin: "2px 0 4px", fontSize: "1.4rem" }}>{participantReport.participant_name}</h2>
+                          <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                            {participantReport.participant_role || "Sin rol definido"} • {participantReport.participant_email}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="button primary"
+                          onClick={() => handleDownloadParticipantPdf(participantReport.participant_id)}
+                          disabled={downloadingParticipantPdf}
+                          style={{ height: 38, fontSize: "0.85rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 6, padding: "0 16px" }}
+                        >
+                          <Download size={16} />
+                          {downloadingParticipantPdf ? "Generando PDF..." : "Descargar PDF Individual"}
+                        </button>
+                      </div>
+                    </div>
+
+
+                    {/* KPI Band del Colaborador */}
+                    <div className="kpi-band">
+                      <section className="panel metric">
+                        <span className="muted">Promedio Evaluadores</span>
+                        <strong style={{ color: "var(--accent-dark)" }}>{participantReport.overall_evaluators_score ?? "N/A"}</strong>
+                      </section>
+                      <section className="panel metric">
+                        <span className="muted">Autoevaluación</span>
+                        <strong>{participantReport.overall_self_score ?? "N/A"}</strong>
+                      </section>
+                      <section className="panel metric">
+                        <span className="muted">Brecha de Percepción</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <strong>
+                            {participantReport.overall_gap !== null && participantReport.overall_gap > 0 ? `+${participantReport.overall_gap}` : (participantReport.overall_gap ?? "N/A")}
+                          </strong>
+                          {participantReport.overall_gap !== null && (
+                            <span 
+                              className="status-pill" 
+                              style={{ 
+                                fontSize: "0.75rem", 
+                                background: participantReport.overall_gap > 0.5 ? "#fff7e6" : participantReport.overall_gap < -0.5 ? "#e6f7ff" : "#f6ffed",
+                                color: participantReport.overall_gap > 0.5 ? "#d46b08" : participantReport.overall_gap < -0.5 ? "#0958d9" : "#389e0d",
+                                border: participantReport.overall_gap > 0.5 ? "1px solid #ffd591" : participantReport.overall_gap < -0.5 ? "1px solid #91caff" : "1px solid #b7eb8f"
+                              }}
+                            >
+                              {participantReport.overall_gap > 0.5 ? "Sobreestimado" : participantReport.overall_gap < -0.5 ? "Subestimado" : "Alineado"}
+                            </span>
+                          )}
+                        </div>
+                      </section>
+                    </div>
+
+                    {/* Fortalezas y Oportunidades */}
+                    <div className="grid two">
+                      <section className="panel" style={{ background: "rgba(39, 174, 96, 0.03)", border: "1px solid rgba(39, 174, 96, 0.2)" }}>
+                        <h3 style={{ fontSize: "1rem", color: "#27ae60", display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                          🌟 Fortalezas Destacadas
+                        </h3>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {participantReport.top_strengths.map((str, idx) => (
+                            <div key={idx} style={{ background: "#fff", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--line)", fontSize: "0.85rem", fontWeight: 600 }}>
+                              {str}
+                            </div>
+                          ))}
+                          {!participantReport.top_strengths.length && <p className="muted" style={{ fontSize: "0.85rem" }}>Sin suficientes datos para evaluar fortalezas.</p>}
+                        </div>
+                      </section>
+
+                      <section className="panel" style={{ background: "rgba(230, 126, 34, 0.03)", border: "1px solid rgba(230, 126, 34, 0.2)" }}>
+                        <h3 style={{ fontSize: "1rem", color: "#e67e22", display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                          🎯 Áreas de Oportunidad / Desarrollo
+                        </h3>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {participantReport.opportunities.map((opp, idx) => (
+                            <div key={idx} style={{ background: "#fff", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--line)", fontSize: "0.85rem", fontWeight: 600 }}>
+                              {opp}
+                            </div>
+                          ))}
+                          {!participantReport.opportunities.length && <p className="muted" style={{ fontSize: "0.85rem" }}>Sin suficientes datos para evaluar oportunidades.</p>}
+                        </div>
+                      </section>
+                    </div>
+
+                    {/* Tabla de Competencias por Relación */}
+                    <section className="panel">
+                      <h3 style={{ marginBottom: 14 }}>Desglose por Competencia y Tipo de Relación</h3>
+                      <div style={{ overflowX: "auto" }}>
+                        <table className="dispatch-table" style={{ fontSize: "0.85rem" }}>
+                          <thead>
+                            <tr>
+                              <th>Competencia</th>
+                              <th style={{ textAlign: "center" }}>Autoevaluación</th>
+                              <th style={{ textAlign: "center" }}>Evaluadores (Promedio)</th>
+                              <th style={{ textAlign: "center" }}>Brecha</th>
+                              <th>Desglose por Relación</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {participantReport.competencies.map((comp) => (
+                              <tr key={comp.competency_id}>
+                                <td style={{ fontWeight: 700 }}>{comp.competency_name}</td>
+                                <td style={{ textAlign: "center" }}>
+                                  {comp.self_score !== null ? <strong>{comp.self_score}</strong> : <span className="muted">-</span>}
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  {comp.evaluators_score !== null ? (
+                                    <span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-dark)", fontWeight: "bold" }}>
+                                      {comp.evaluators_score}
+                                    </span>
+                                  ) : <span className="muted">-</span>}
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  {comp.gap !== null ? (
+                                    <span style={{ fontWeight: "bold", color: comp.gap > 0.5 ? "#d46b08" : comp.gap < -0.5 ? "#0958d9" : "#389e0d" }}>
+                                      {comp.gap > 0 ? `+${comp.gap}` : comp.gap}
+                                    </span>
+                                  ) : <span className="muted">-</span>}
+                                </td>
+                                <td>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    {Object.entries(comp.by_relationship).map(([rel, sc]) => (
+                                      <span key={rel} className="status-pill" style={{ fontSize: "0.75rem", background: "rgba(0,0,0,0.03)", border: "1px solid var(--line)" }}>
+                                        {rel}: <strong>{sc}</strong>
+                                      </span>
+                                    ))}
+                                    {Object.keys(comp.by_relationship).length === 0 && <span className="muted" style={{ fontSize: "0.75rem" }}>Sin respuestas espejo</span>}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+
+                    {/* Desglose de Preguntas y Comentarios */}
+                    <section className="panel">
+                      <h3 style={{ marginBottom: 14 }}>Preguntas y Retroalimentación Cualitativa</h3>
+                      <div className="list">
+                        {participantReport.questions.map((q) => (
+                          <div className="item" key={q.question_id} style={{ display: "block" }}>
+                            <div className="row" style={{ alignItems: "flex-start", marginBottom: 6 }}>
+                              <div>
+                                <span className="status-pill" style={{ marginRight: 6, fontSize: "0.7rem", padding: "1px 5px" }}>{q.competency_name}</span>
+                                <h4 style={{ marginTop: 4, fontSize: "0.95rem", fontWeight: 700 }}>{q.question_text}</h4>
+                              </div>
+                              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                                {q.self_score !== null && (
+                                  <div style={{ textAlign: "right" }}>
+                                    <span className="muted" style={{ fontSize: "0.7rem", display: "block" }}>Auto</span>
+                                    <strong style={{ fontSize: "0.95rem" }}>{q.self_score}</strong>
+                                  </div>
+                                )}
+                                {q.evaluators_score !== null && (
+                                  <div style={{ textAlign: "right" }}>
+                                    <span className="muted" style={{ fontSize: "0.7rem", display: "block" }}>Evaluadores</span>
+                                    <strong style={{ fontSize: "0.95rem", color: "var(--accent-dark)" }}>{q.evaluators_score}</strong>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {q.comments && q.comments.length > 0 && (
+                              <div style={{ marginTop: 10, background: "rgba(0,0,0,0.015)", padding: 10, borderRadius: 6, border: "1px solid var(--line)" }}>
+                                <span className="muted" style={{ fontSize: "0.75rem", fontWeight: 700, display: "block", marginBottom: 6 }}>
+                                  💬 Comentarios Recibidos ({q.comments.length}):
+                                </span>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                  {q.comments.map((c, idx) => (
+                                    <div key={idx} style={{ fontSize: "0.8rem", background: "#fff", padding: "6px 10px", borderRadius: 4, border: "1px solid var(--line)" }}>
+                                      <span className="status-pill" style={{ fontSize: "0.7rem", padding: "1px 4px", marginRight: 6, background: "var(--accent-soft)", color: "var(--accent-dark)" }}>
+                                        {c.relationship}
+                                      </span>
+                                      <em>"{c.comment}"</em>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {resultsSubTab === "executive" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {/* Hero / Banner Ejecutivo */}
+                <div
+                  className="panel"
+                  style={{
+                    background: "linear-gradient(135deg, #00857c 0%, #005a54 100%)",
+                    color: "#ffffff",
+                    padding: "24px 28px",
+                    borderRadius: "14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 16,
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        background: "rgba(255,255,255,0.2)",
+                        color: "#fff",
+                        padding: "3px 10px",
+                        borderRadius: "20px",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                      }}
+                    >
+                      Reporte Oficial de Alta Dirección
+                    </span>
+                    <h2 style={{ fontSize: "1.45rem", fontWeight: 800, margin: "10px 0 6px 0", color: "#fff" }}>
+                      Reporte de Evaluación 360° - Fuerza de Ventas
+                    </h2>
+                    <p style={{ margin: 0, fontSize: "0.88rem", opacity: 0.9, maxWidth: 640 }}>
+                      Generación automatizada de 29 páginas idéntica al formato corporativo original (MSD & abc&co Coaching / Consulting) con análisis de 4 competencias ponderadas, 33 reactivos, matrices de desempeño 2023-2025 y gráficos de dispersión por línea.
+                    </p>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={handleDownloadExecutivePdf}
+                      disabled={downloadingExecutivePdf}
+                      style={{
+                        background: "#ffffff",
+                        color: "#00857c",
+                        fontWeight: 800,
+                        fontSize: "0.95rem",
+                        padding: "12px 22px",
+                        borderRadius: "10px",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                        border: "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <Download size={18} />
+                      {downloadingExecutivePdf ? "Generando 29 Páginas..." : "Descargar Reporte Ejecutivo (PDF 29P)"}
+                    </button>
+                  </div>
+                </div>
+
+                {loadingExecutive && !executiveResults && (
+                  <div className="panel" style={{ textAlign: "center", padding: 40 }}>
+                    <p className="muted">Calculando estadísticas ejecutivas del reporte 360°...</p>
+                  </div>
+                )}
+
+                {executiveResults && (
+                  <>
+                    {/* Tarjetas de Métricas Generales */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+                      <div className="panel" style={{ padding: "16px 20px" }}>
+                        <span className="muted" style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase" }}>Total Evaluados</span>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--foreground)", marginTop: 4 }}>
+                          {executiveResults.total_evaluados}
+                        </div>
+                        <span className="muted" style={{ fontSize: "0.75rem" }}>Representantes analizados</span>
+                      </div>
+
+                      <div className="panel" style={{ padding: "16px 20px", borderLeft: "4px solid #00857c" }}>
+                        <span className="muted" style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase" }}>Promedio Neto Global</span>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#00857c", marginTop: 4 }}>
+                          {executiveResults.net_overall.average?.toFixed(2) || "0.00"}
+                          <span style={{ fontSize: "0.9rem", color: "var(--muted)", fontWeight: 500 }}> / 10</span>
+                        </div>
+                        <span className="muted" style={{ fontSize: "0.75rem" }}>Escala 1 a 10 integrada</span>
+                      </div>
+
+                      <div className="panel" style={{ padding: "16px 20px", borderLeft: "4px solid #22c55e" }}>
+                        <span className="muted" style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase" }}>Mediana Global</span>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#15803d", marginTop: 4 }}>
+                          {executiveResults.net_overall.median?.toFixed(2) || "0.00"}
+                        </div>
+                        <span className="muted" style={{ fontSize: "0.75rem" }}>Punto de corte central</span>
+                      </div>
+
+                      <div className="panel" style={{ padding: "16px 20px", borderLeft: "4px solid #eab308" }}>
+                        <span className="muted" style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase" }}>Desviación Estándar</span>
+                        <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#854d0e", marginTop: 4 }}>
+                          {executiveResults.net_overall.stddev?.toFixed(2) || "0.00"}
+                        </div>
+                        <span className="muted" style={{ fontSize: "0.75rem" }}>Dispersión general grupal</span>
+                      </div>
+                    </div>
+
+                    {/* Resumen de Competencias y Ponderaciones */}
+                    <div className="panel" style={{ padding: "20px 24px" }}>
+                      <h3 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: 14 }}>
+                        Estructura de Competencias y Ponderaciones Estratégicas
+                      </h3>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+                        {executiveResults.competencies.map((comp, idx) => (
+                          <div
+                            key={comp.competency_id}
+                            style={{
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: "10px",
+                              padding: "14px 16px",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0f172a" }}>
+                                {idx + 1}. {comp.competency_name}
+                              </span>
+                              <span
+                                style={{
+                                  background: "#00857c",
+                                  color: "#fff",
+                                  fontSize: "0.72rem",
+                                  fontWeight: 800,
+                                  padding: "2px 7px",
+                                  borderRadius: "6px",
+                                }}
+                              >
+                                {comp.weight_pct.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: 4 }}>
+                              <span className="muted">Promedio Neto:</span>
+                              <strong>{comp.net_average.toFixed(2)}</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: 4 }}>
+                              <span className="muted">Mediana:</span>
+                              <span>{comp.net_median.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem" }}>
+                              <span className="muted">Reactivos:</span>
+                              <span>{comp.items.length} ítems</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Principales Hallazgos (Insights) */}
+                    {executiveResults.insights && (
+                      <div className="panel" style={{ padding: "20px 24px" }}>
+                        <h3 style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: 12 }}>
+                          Principales Hallazgos y Análisis Estratégico
+                        </h3>
+                        <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 8, fontSize: "0.88rem", color: "#334155" }}>
+                          {executiveResults.insights.summary_bullets.map((b, idx) => (
+                            <li key={idx} style={{ lineHeight: 1.5 }}>{b}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Matriz de Ranking Individual (Vista previa de las 44 filas) */}
+                    <div className="panel" style={{ padding: "20px 24px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                        <div>
+                          <h3 style={{ fontSize: "1.05rem", fontWeight: 700, margin: 0 }}>
+                            Ranking Individual y Desempeño Histórico (2023-2025)
+                          </h3>
+                          <span className="muted" style={{ fontSize: "0.75rem" }}>
+                            Escala de semáforo: Verde (≥ 8.5 Excede), Amarillo (7.0 - 8.4 Cumple), Rojo (≤ 6.9 Requiere mejora)
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 10, fontSize: "0.75rem" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ width: 10, height: 10, background: "#dcfce7", border: "1px solid #16a34a", borderRadius: 2 }}></span>
+                            ≥ 8.50
+                          </span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ width: 10, height: 10, background: "#fef9c3", border: "1px solid #ca8a04", borderRadius: 2 }}></span>
+                            7.00 - 8.49
+                          </span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ width: 10, height: 10, background: "#fee2e2", border: "1px solid #dc2626", borderRadius: 2 }}></span>
+                            ≤ 6.99
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                          <thead>
+                            <tr style={{ background: "#f1f5f9", textAlign: "left", borderBottom: "2px solid #cbd5e1" }}>
+                              <th style={{ padding: "8px 10px", width: 50 }}>#</th>
+                              <th style={{ padding: "8px 10px", width: 70 }}>Rol</th>
+                              <th style={{ padding: "8px 10px", width: 130 }}>Línea</th>
+                              <th style={{ padding: "8px 10px" }}>Colaborador</th>
+                              {executiveResults.competencies.map((c) => (
+                                <th key={c.competency_id} style={{ padding: "8px 8px", textAlign: "center", minWidth: 90 }}>
+                                  {c.competency_name.split(" ")[0]} ({c.weight_pct.toFixed(0)}%)
+                                </th>
+                              ))}
+                              <th style={{ padding: "8px 10px", textAlign: "center", minWidth: 70, background: "#e0f2fe" }}>Prom.</th>
+                              <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2023</th>
+                              <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2024</th>
+                              <th style={{ padding: "8px 8px", textAlign: "center", minWidth: 60 }}>2025</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {executiveResults.participants_matrix.map((row, idx) => (
+                              <tr
+                                key={row.participant_id}
+                                style={{
+                                  borderBottom: "1px solid #e2e8f0",
+                                  background: idx % 2 === 0 ? "#ffffff" : "#f8fafc",
+                                }}
+                              >
+                                <td style={{ padding: "7px 10px", fontWeight: 700, color: "var(--muted)" }}>
+                                  {idx + 1}
+                                </td>
+                                <td style={{ padding: "7px 10px", color: "var(--muted)" }}>
+                                  {row.role || "SR"}
+                                </td>
+                                <td style={{ padding: "7px 10px", fontWeight: 600 }}>
+                                  {row.business_line || "General"}
+                                </td>
+                                <td style={{ padding: "7px 10px", fontWeight: 700 }}>
+                                  {row.participant_name}
+                                </td>
+                                {executiveResults.competencies.map((c) => {
+                                  const val = row.net_scores[c.competency_name] ?? 0;
+                                  let bg = "#ffffff";
+                                  let color = "#0f172a";
+                                  if (val >= 8.5) {
+                                    bg = "#dcfce7";
+                                    color = "#15803d";
+                                  } else if (val >= 7.0) {
+                                    bg = "#fef9c3";
+                                    color = "#854d0e";
+                                  } else if (val > 0) {
+                                    bg = "#fee2e2";
+                                    color = "#b91c1c";
+                                  }
+                                  return (
+                                    <td
+                                      key={c.competency_id}
+                                      style={{
+                                        padding: "7px 8px",
+                                        textAlign: "center",
+                                        background: bg,
+                                        color: color,
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {val.toFixed(2)}
+                                    </td>
+                                  );
+                                })}
+                                <td
+                                  style={{
+                                    padding: "7px 10px",
+                                    textAlign: "center",
+                                    background: "#e0f2fe",
+                                    fontWeight: 800,
+                                    color: "#0369a1",
+                                  }}
+                                >
+                                  {row.net_average.toFixed(2)}
+                                </td>
+                                <td style={{ padding: "7px 8px", textAlign: "center", fontSize: "0.75rem", color: "var(--muted)" }}>
+                                  {row.performance_history?.["2023"] || "#N/D"}
+                                </td>
+                                <td style={{ padding: "7px 8px", textAlign: "center", fontSize: "0.75rem", color: "var(--muted)" }}>
+                                  {row.performance_history?.["2024"] || "#N/D"}
+                                </td>
+                                <td style={{ padding: "7px 8px", textAlign: "center", fontSize: "0.75rem", color: "var(--muted)" }}>
+                                  {row.performance_history?.["2025"] || "#N/D"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </section>
     </main>

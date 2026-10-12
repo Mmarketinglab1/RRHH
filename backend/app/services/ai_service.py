@@ -21,7 +21,9 @@ def generate_questions_for_competencies(
         return [
             {
                 "competency_id": item["id"],
-                "text": f"Evalua de 1 a 10 el nivel demostrado en {item['name']}.",
+                "text": f"¿Cómo evalúa el nivel demostrado por el colaborador en {item['name']}?",
+                "text_self": f"¿Cómo evalúo mi propio nivel en {item['name']}?",
+                "text_evaluator": f"¿Cómo evalúa el nivel demostrado por el colaborador en {item['name']}?",
             }
             for item in competencies
             for _ in range(questions_per_competency)
@@ -31,8 +33,8 @@ def generate_questions_for_competencies(
         "role": "user",
         "content": (
             "Genera preguntas para una evaluacion 360. Responde solo JSON con la forma "
-            '{"questions":[{"competency_id":"uuid","text":"pregunta"}]}. '
-            "Las preguntas deben medirse en escala 1 a 10, ser observables y no duplicarse. "
+            '{"questions":[{"competency_id":"uuid","text_self":"pregunta autoevaluación (1a persona)","text_evaluator":"pregunta evaluador espejo (3a persona)"}]}. '
+            "Las preguntas deben ser observables y no duplicarse. "
             f"Preguntas por competencia: {questions_per_competency}. "
             f"Competencias: {json.dumps(competencies, default=str)}"
         ),
