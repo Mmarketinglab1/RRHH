@@ -1151,21 +1151,6 @@ export default function EvaluationDetail() {
       });
   }, [assignments, participants]);
 
-  async function handleSeedDemo() {
-    if (!token) return;
-    setLoading(true);
-    setMessage("");
-    try {
-      const res = await api<{ message: string }>(`/evaluations/${evaluationId}/seed-demo`, { method: "POST" }, token);
-      setMessage(res.message || "Se cargaron 3 colaboradores ficticios con competencias y respuestas de ejemplo.");
-      await refreshAll(token);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Error al cargar datos de ejemplo");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   if (!token) {
     return (
       <main className="content">
@@ -1455,9 +1440,6 @@ export default function EvaluationDetail() {
           <span>RRHH 360 AI</span>
         </Link>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="button secondary" onClick={handleSeedDemo} disabled={loading} type="button" style={{ background: "var(--accent-soft)", color: "var(--accent-dark)", border: "1px solid #b8ddd6" }}>
-            ✨ Cargar Ejemplo (3 Colaboradores)
-          </button>
           <button className="button secondary" onClick={() => refreshAll()} type="button">
             <RefreshCw size={16} />
             Actualizar
