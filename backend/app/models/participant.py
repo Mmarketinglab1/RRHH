@@ -19,6 +19,7 @@ class Participant(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(160), nullable=False)
     role: Mapped[str | None] = mapped_column(String(120))
+    profile: Mapped[str | None] = mapped_column(String(60), default="individual_contributor", nullable=True)
     business_line: Mapped[str | None] = mapped_column(String(120), nullable=True)
     performance_history: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
     created_at: Mapped[datetime] = mapped_column(

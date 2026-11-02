@@ -64,6 +64,21 @@ def run_auto_migrations():
                     "ALTER TABLE participants ADD COLUMN IF NOT EXISTS performance_history JSONB DEFAULT '{}'::jsonb;"
                 )
             )
+            conn.execute(
+                text(
+                    "ALTER TABLE participants ADD COLUMN IF NOT EXISTS profile VARCHAR(60) DEFAULT 'individual_contributor';"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS survey_config JSONB DEFAULT '{}'::jsonb;"
+                )
+            )
+            conn.execute(
+                text(
+                    "ALTER TABLE survey_tokens ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ;"
+                )
+            )
     except Exception as e:
         print(f"Auto-migration warning: {e}")
 

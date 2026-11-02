@@ -111,6 +111,8 @@ export default function HomePage() {
     setLoading(true);
     setMessage("");
     const data = new FormData(form);
+    const rawEndsAt = String(data.get("ends_at") || "").trim();
+    const notifyEmail = data.get("email_notification_enabled") === "true";
     try {
       await api<Evaluation>(
         "/evaluations",
@@ -119,6 +121,11 @@ export default function HomePage() {
           body: JSON.stringify({
             title: data.get("title"),
             description: data.get("description"),
+            ends_at: rawEndsAt ? new Date(rawEndsAt).toISOString() : null,
+            survey_config: {
+              email_notification_enabled: notifyEmail,
+              reminder_days_before: 3,
+            },
           }),
         },
         token,
@@ -248,6 +255,16 @@ export default function HomePage() {
                 <label>Descripcion</label>
                 <textarea className="textarea" name="description" />
               </div>
+              <div className="field">
+                <label>Fecha de caducidad de encuestas (opcional)</label>
+                <input className="input" name="ends_at" type="datetime-local" />
+              </div>
+              <div className="field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input id="email_notification_enabled" name="email_notification_enabled" type="checkbox" value="true" />
+                <label htmlFor="email_notification_enabled" style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+                  Habilitar aviso al encuestado por mail
+                </label>
+              </div>
               <button className="button" disabled={loading} type="submit">
                 <Plus size={16} />
                 Crear
@@ -266,7 +283,14 @@ export default function HomePage() {
                 <Link className="item" href={`/evaluations/${evaluation.id}`} key={evaluation.id}>
                   <div className="row">
                     <strong>{evaluation.title}</strong>
-                    <span className="status-pill">{statusLabels[evaluation.status] || evaluation.status}</span>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {evaluation.ends_at && (
+                        <span className="status-pill" style={{ background: "#fff8e6", color: "#875800", borderColor: "#ffe58f", fontSize: "0.7rem" }}>
+                          ⏰ Caduca: {new Date(evaluation.ends_at).toLocaleDateString("es-AR")}
+                        </span>
+                      )}
+                      <span className="status-pill">{statusLabels[evaluation.status] || evaluation.status}</span>
+                    </div>
                   </div>
                   <span className="muted">{evaluation.description || "Sin descripcion"}</span>
                 </Link>

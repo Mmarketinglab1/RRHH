@@ -26,6 +26,9 @@ import {
   Upload,
   Image as ImageIcon,
   Sliders,
+  Calendar,
+  Mail,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -117,6 +120,21 @@ export default function EvaluationDetail() {
   const [showRankingTable, setShowRankingTable] = useState<boolean>(true);
   const [showExecutiveTab, setShowExecutiveTab] = useState<boolean>(true);
 
+  // Configuración de caducidad de encuestas y avisos por mail
+  const [surveyEndsAt, setSurveyEndsAt] = useState<string>("");
+  const [emailNotifyEnabled, setEmailNotifyEnabled] = useState<boolean>(false);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState<number>(3);
+  const [emailSubject, setEmailSubject] = useState<string>("");
+  const [emailCustomMessage, setEmailCustomMessage] = useState<string>("");
+  const [smtpHost, setSmtpHost] = useState<string>("");
+  const [smtpPort, setSmtpPort] = useState<number>(587);
+  const [smtpUser, setSmtpUser] = useState<string>("");
+  const [smtpPassword, setSmtpPassword] = useState<string>("");
+  const [smtpFromEmail, setSmtpFromEmail] = useState<string>("");
+  const [showSmtpConfig, setShowSmtpConfig] = useState<boolean>(false);
+  const [savingSurveyConfig, setSavingSurveyConfig] = useState<boolean>(false);
+  const [sendingNotifications, setSendingNotifications] = useState<boolean>(false);
+
   useEffect(() => {
     if (evaluation) {
       setClientLogoUrl(evaluation.client_logo_url || "");
@@ -145,6 +163,31 @@ export default function EvaluationDetail() {
       if (cfg.show_insights_section !== undefined) setShowInsightsSection(cfg.show_insights_section);
       if (cfg.show_ranking_table !== undefined) setShowRankingTable(cfg.show_ranking_table);
       if (cfg.show_executive_tab !== undefined) setShowExecutiveTab(cfg.show_executive_tab);
+
+      if (evaluation.ends_at) {
+        const dt = new Date(evaluation.ends_at);
+        if (!isNaN(dt.getTime())) {
+          const pad = (n: number) => String(n).padStart(2, "0");
+          const localIso = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+          setSurveyEndsAt(localIso);
+        }
+      } else {
+        setSurveyEndsAt("");
+      }
+
+      const sCfg = evaluation.survey_config || {};
+      setEmailNotifyEnabled(Boolean(sCfg.email_notification_enabled));
+      setReminderDaysBefore(Number(sCfg.reminder_days_before ?? 3));
+      setEmailSubject(sCfg.email_subject || `Aviso de Encuesta 360°: ${evaluation.title}`);
+      setEmailCustomMessage(
+        sCfg.email_custom_message ||
+          "Te recordamos completar la encuesta 360° asignada antes de la fecha de caducidad indicada."
+      );
+      setSmtpHost(sCfg.smtp_host || "");
+      setSmtpPort(Number(sCfg.smtp_port || 587));
+      setSmtpUser(sCfg.smtp_user || "");
+      setSmtpPassword(sCfg.smtp_password || "");
+      setSmtpFromEmail(sCfg.smtp_from_email || "");
     }
   }, [evaluation]);
 
@@ -216,6 +259,132 @@ export default function EvaluationDetail() {
       alert(`Error al guardar configuración: ${err.message}`);
     } finally {
       setSavingReportConfig(false);
+    }
+  }
+
+  async function handleSaveSurveyConfig(e?: FormEvent) {
+    if (e) e.preventDefault();
+    if (!token || !evaluationId) return;
+    setSavingSurveyConfig(true);
+    setMessage("");
+    try {
+      const endsAtIso = surveyEndsAt ? new Date(surveyEndsAt).toISOString() : null;
+      const updated = await api<Evaluation>(
+        `/evaluations/${evaluationId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            ends_at: endsAtIso,
+            survey_config: {
+              ...(evaluation?.survey_config || {}),
+              email_notification_enabled: emailNotifyEnabled,
+              reminder_days_before: Number(reminderDaysBefore),
+              email_subject: emailSubject,
+              email_custom_message: emailCustomMessage,
+              smtp_host: smtpHost || null,
+              smtp_port: Number(smtpPort) || 587,
+              smtp_user: smtpUser || null,
+              smtp_password: smtpPassword || null,
+              smtp_from_email: smtpFromEmail || null,
+            },
+          }),
+        },
+        token
+      );
+      setEvaluation(updated);
+      await refreshAll(token);
+      setMessage("Configuración de fecha de caducidad y aviso por mail guardada correctamente.");
+    } catch (err: any) {
+      setMessage(`Error al guardar configuración de encuesta: ${err.message}`);
+    } finally {
+      setSavingSurveyConfig(false);
+    }
+  }
+
+  async function handleSendBulkNotifications() {
+    if (!token || !evaluationId) return;
+    setSendingNotifications(true);
+    setMessage("");
+    try {
+      const res = await api<{
+        message: string;
+        sent_count: number;
+        registered_count: number;
+        smtp_configured: boolean;
+        recipients: Array<{
+          evaluator_email: string;
+          subject: string;
+          plain_body: string;
+        }>;
+      }>(
+        `/evaluations/${evaluationId}/notify-respondents`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            only_pending: true,
+            frontend_url: window.location.origin,
+            subject: emailSubject,
+            custom_message: emailCustomMessage,
+          }),
+        },
+        token
+      );
+      await refreshAll(token);
+      setMessage(res.message);
+    } catch (err: any) {
+      setMessage(`Error al enviar avisos por mail: ${err.message}`);
+    } finally {
+      setSendingNotifications(false);
+    }
+  }
+
+  async function handleSendSingleNotification(
+    assignmentId: string,
+    evaluatorEmail: string,
+    evaluatorName: string
+  ) {
+    if (!token || !evaluationId) return;
+    setSendingNotifications(true);
+    setMessage("");
+    try {
+      const res = await api<{
+        message: string;
+        sent_count: number;
+        smtp_configured: boolean;
+        recipients: Array<{
+          evaluator_email: string;
+          subject: string;
+          plain_body: string;
+        }>;
+      }>(
+        `/evaluations/${evaluationId}/notify-respondents`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            assignment_ids: [assignmentId],
+            only_pending: false,
+            frontend_url: window.location.origin,
+            subject: emailSubject,
+            custom_message: emailCustomMessage,
+          }),
+        },
+        token
+      );
+      await refreshAll(token);
+      if (res.sent_count > 0) {
+        setMessage(`Aviso enviado por mail a ${evaluatorName} (${evaluatorEmail}).`);
+      } else if (res.recipients && res.recipients.length > 0) {
+        const rec = res.recipients[0];
+        const mailtoUrl = `mailto:${encodeURIComponent(rec.evaluator_email)}?subject=${encodeURIComponent(rec.subject)}&body=${encodeURIComponent(rec.plain_body)}`;
+        window.open(mailtoUrl, "_blank");
+        setMessage(`Aviso registrado y cliente de correo abierto para ${evaluatorName} (${evaluatorEmail}).`);
+      } else {
+        setMessage(`Aviso procesado para ${evaluatorName}.`);
+      }
+    } catch (err: any) {
+      setMessage(`Error al notificar a ${evaluatorName}: ${err.message}`);
+    } finally {
+      setSendingNotifications(false);
     }
   }
 
@@ -618,6 +787,7 @@ export default function EvaluationDetail() {
       email: data.get("email"),
       full_name: data.get("full_name"),
       role: data.get("role"),
+      profile: data.get("profile") || "individual_contributor",
     });
   }
 
@@ -947,6 +1117,7 @@ export default function EvaluationDetail() {
         email: data.get("email"),
         full_name: data.get("full_name"),
         role: data.get("role"),
+        profile: data.get("profile") || "individual_contributor",
       },
     );
     if (updated) setEditingParticipantId(null);
@@ -1003,6 +1174,276 @@ export default function EvaluationDetail() {
           Volver
         </Link>
       </main>
+    );
+  }
+
+  function renderSurveyExpirationPanel() {
+    const formattedExpiration = evaluation?.ends_at
+      ? new Date(evaluation.ends_at).toLocaleString("es-AR", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : null;
+    const isExpired = evaluation?.ends_at ? new Date(evaluation.ends_at).getTime() < Date.now() : false;
+
+    return (
+      <section
+        className="panel"
+        style={{
+          marginBottom: 18,
+          border: "1px solid var(--line-strong)",
+          background: "#ffffff",
+          borderRadius: 12,
+          padding: "18px 20px",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, color: "var(--accent-dark)" }}>
+              <Calendar size={18} />
+              Configuración de Caducidad y Aviso por Mail al Encuestado
+            </h3>
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.82rem" }}>
+              Define la fecha límite para responder las encuestas y configura el aviso por correo electrónico para los encuestados.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {formattedExpiration ? (
+              <span
+                className="status-pill"
+                style={{
+                  background: isExpired ? "#fff1f0" : "#fff8e6",
+                  color: isExpired ? "#cf1322" : "#875800",
+                  border: `1px solid ${isExpired ? "#ffa39e" : "#ffe58f"}`,
+                  fontWeight: 700,
+                }}
+              >
+                {isExpired ? `⚠️ Caducada (${formattedExpiration})` : `⏰ Caduca: ${formattedExpiration}`}
+              </span>
+            ) : (
+              <span className="status-pill" style={{ background: "#edf1f6", color: "#263244" }}>
+                ⏰ Sin fecha de caducidad
+              </span>
+            )}
+            <span
+              className="status-pill"
+              style={{
+                background: emailNotifyEnabled ? "var(--accent-soft)" : "#edf1f6",
+                color: emailNotifyEnabled ? "var(--accent-dark)" : "#263244",
+                border: emailNotifyEnabled ? "1px solid #b8ddd6" : "1px solid var(--line)",
+              }}
+            >
+              {emailNotifyEnabled ? "📧 Aviso por mail activo" : "📧 Aviso por mail inactivo"}
+            </span>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveSurveyConfig} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="grid two" style={{ gap: 16 }}>
+            <div className="field">
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+                <Calendar size={14} />
+                Fecha y hora de caducidad de la encuesta
+              </label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={surveyEndsAt}
+                  onChange={(e) => setSurveyEndsAt(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                {surveyEndsAt && (
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => setSurveyEndsAt("")}
+                    style={{ minHeight: 38, padding: "0 12px", fontSize: "0.8rem" }}
+                    title="Quitar fecha de caducidad"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <span className="muted" style={{ fontSize: "0.75rem" }}>
+                Pasada esta fecha, los enlaces de encuesta dejarán de admitir respuestas automáticamente.
+              </span>
+            </div>
+
+            <div className="field">
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+                <Bell size={14} />
+                Aviso al encuestado por mail
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", minHeight: 38 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.88rem", fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={emailNotifyEnabled}
+                    onChange={(e) => setEmailNotifyEnabled(e.target.checked)}
+                    style={{ width: 16, height: 16, cursor: "pointer" }}
+                  />
+                  Habilitar aviso por mail al encuestado
+                </label>
+                {emailNotifyEnabled && (
+                  <select
+                    className="select"
+                    value={reminderDaysBefore}
+                    onChange={(e) => setReminderDaysBefore(Number(e.target.value))}
+                    style={{ width: "auto", minHeight: 34, height: 34, padding: "0 10px", fontSize: "0.8rem" }}
+                  >
+                    <option value={1}>Avisar 1 día antes del vencimiento</option>
+                    <option value={2}>Avisar 2 días antes del vencimiento</option>
+                    <option value={3}>Avisar 3 días antes del vencimiento</option>
+                    <option value={5}>Avisar 5 días antes del vencimiento</option>
+                    <option value={7}>Avisar 7 días antes del vencimiento</option>
+                    <option value={0}>Aviso inmediato / manual</option>
+                  </select>
+                )}
+              </div>
+              <span className="muted" style={{ fontSize: "0.75rem" }}>
+                El correo incluirá el enlace directo a la encuesta confidencial y la fecha de caducidad configurada.
+              </span>
+            </div>
+          </div>
+
+          {emailNotifyEnabled && (
+            <div style={{ background: "rgba(0,133,124,0.03)", border: "1px solid var(--line)", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="grid two" style={{ gap: 14 }}>
+                <div className="field">
+                  <label>Asunto del correo de aviso</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder="Ej: Aviso de Encuesta 360° - Fecha límite próxima"
+                  />
+                </div>
+                <div className="field">
+                  <label>Mensaje personalizado para el encuestado</label>
+                  <textarea
+                    className="textarea"
+                    rows={2}
+                    value={emailCustomMessage}
+                    onChange={(e) => setEmailCustomMessage(e.target.value)}
+                    placeholder="Mensaje que verá el encuestado en el cuerpo del correo..."
+                    style={{ minHeight: 60 }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowSmtpConfig((prev) => !prev)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "var(--accent-dark)",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Settings size={13} />
+                  {showSmtpConfig ? "Ocultar configuración de servidor de correo (SMTP)" : "Configurar servidor de correo saliente (SMTP opcional)"}
+                </button>
+
+                {showSmtpConfig && (
+                  <div className="grid two" style={{ gap: 12, marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
+                    <div className="field">
+                      <label>Servidor SMTP (Host)</label>
+                      <input
+                        className="input"
+                        value={smtpHost}
+                        onChange={(e) => setSmtpHost(e.target.value)}
+                        placeholder="Ej: smtp.gmail.com"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Puerto SMTP</label>
+                      <input
+                        type="number"
+                        className="input"
+                        value={smtpPort}
+                        onChange={(e) => setSmtpPort(Number(e.target.value))}
+                        placeholder="587"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Usuario SMTP</label>
+                      <input
+                        className="input"
+                        value={smtpUser}
+                        onChange={(e) => setSmtpUser(e.target.value)}
+                        placeholder="usuario@empresa.com"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Contraseña / App Password SMTP</label>
+                      <input
+                        type="password"
+                        className="input"
+                        value={smtpPassword}
+                        onChange={(e) => setSmtpPassword(e.target.value)}
+                        placeholder="••••••••••••"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Email Remitente (From)</label>
+                      <input
+                        type="email"
+                        className="input"
+                        value={smtpFromEmail}
+                        onChange={(e) => setSmtpFromEmail(e.target.value)}
+                        placeholder="rrhh@empresa.com"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button className="button" type="submit" disabled={savingSurveyConfig || loading}>
+                <Save size={15} />
+                {savingSurveyConfig ? "Guardando..." : "Guardar Caducidad y Aviso"}
+              </button>
+              {emailNotifyEnabled && assignments.length > 0 && (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={handleSendBulkNotifications}
+                  disabled={sendingNotifications || loading}
+                  style={{
+                    borderColor: "var(--accent)",
+                    color: "var(--accent-dark)",
+                    background: "var(--accent-soft)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Mail size={15} />
+                  {sendingNotifications ? "Enviando avisos..." : "Enviar Aviso por Mail a Pendientes"}
+                </button>
+              )}
+            </div>
+            {evaluation?.survey_config?.last_bulk_notified_at && (
+              <span className="muted" style={{ fontSize: "0.75rem" }}>
+                Último aviso enviado: {new Date(evaluation.survey_config.last_bulk_notified_at).toLocaleString("es-AR")}
+              </span>
+            )}
+          </div>
+        </form>
+      </section>
     );
   }
 
@@ -1067,10 +1508,22 @@ export default function EvaluationDetail() {
             </div>
             <span className="status-pill">{competencies.length} competencias</span>
             <span className="status-pill">{participants.length} participantes</span>
+            {evaluation?.ends_at && (
+              <span
+                className="status-pill"
+                style={{
+                  background: "#fff8e6",
+                  color: "#875800",
+                  borderColor: "#ffe58f",
+                }}
+              >
+                ⏰ Caduca: {new Date(evaluation.ends_at).toLocaleDateString("es-AR")}
+              </span>
+            )}
           </div>
         </div>
 
-        {message && <p className={message.startsWith("Link") ? "success" : "error"}>{message}</p>}
+        {message && <p className={message.startsWith("Link") || message.includes("correctamente") || message.includes("Se enviaron") || message.includes("Se procesaron") || message.includes("Aviso") ? "success" : "error"}>{message}</p>}
 
         <div className="page-tabs">
           <button
@@ -1104,10 +1557,12 @@ export default function EvaluationDetail() {
         </div>
 
         {activeTab === "structure" && (
-          <div className="grid two">
-            <section className="panel">
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <h2>Competencias</h2>
+          <>
+            {renderSurveyExpirationPanel()}
+            <div className="grid two">
+              <section className="panel">
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <h2>Competencias</h2>
                 <div className="toolbar" style={{ gap: 8 }}>
                   <button
                     type="button"
@@ -1539,6 +1994,7 @@ export default function EvaluationDetail() {
               </div>
             </section>
           </div>
+          </>
         )}
 
         {activeTab === "participants" && (
@@ -1584,6 +2040,13 @@ export default function EvaluationDetail() {
                   <label>Rol</label>
                   <input className="input" name="role" />
                 </div>
+                <div className="field">
+                  <label>Perfil</label>
+                  <select className="select" name="profile" defaultValue="individual_contributor">
+                    <option value="leader">Líder</option>
+                    <option value="individual_contributor">Contribuidor Individual</option>
+                  </select>
+                </div>
                 <button className="button" disabled={loading} type="submit">
                   <Plus size={16} />
                   Agregar
@@ -1596,7 +2059,11 @@ export default function EvaluationDetail() {
                       <form className="form" onSubmit={(event) => updateParticipant(event, participant.id)}>
                         <input className="input" defaultValue={participant.email} name="email" required type="email" />
                         <input className="input" defaultValue={participant.full_name} name="full_name" required />
-                        <input className="input" defaultValue={participant.role || ""} name="role" />
+                        <input className="input" defaultValue={participant.role || ""} name="role" placeholder="Rol" />
+                        <select className="select" defaultValue={participant.profile || "individual_contributor"} name="profile">
+                          <option value="leader">Líder</option>
+                          <option value="individual_contributor">Contribuidor Individual</option>
+                        </select>
                         <div className="toolbar">
                           <button className="button" disabled={loading} type="submit">
                             <Save size={16} />
@@ -1612,7 +2079,19 @@ export default function EvaluationDetail() {
                       <>
                         <strong>{participant.full_name}</strong>
                         <span className="muted">{participant.email}</span>
-                        {participant.role && <span className="status-pill">{participant.role}</span>}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {participant.role && <span className="status-pill">{participant.role}</span>}
+                          <span
+                            className="status-pill"
+                            style={{
+                              background: participant.profile === "leader" ? "var(--accent-soft)" : "#edf1f6",
+                              color: participant.profile === "leader" ? "var(--accent-dark)" : "#263244",
+                              borderColor: participant.profile === "leader" ? "#b8ddd6" : "var(--line)",
+                            }}
+                          >
+                            {participant.profile === "leader" ? "Líder" : "Contribuidor Individual"}
+                          </span>
+                        </div>
                         <div className="toolbar">
                           <button className="button secondary" onClick={() => setEditingParticipantId(participant.id)} type="button">
                             <Pencil size={16} />
@@ -1749,6 +2228,7 @@ export default function EvaluationDetail() {
 
         {activeTab === "dispatch" && (
           <div className="dispatch-container">
+            {renderSurveyExpirationPanel()}
             <div className="panel" style={{ background: "var(--accent-soft)", borderColor: "var(--line-strong)", color: "var(--text)", borderRadius: 12, padding: "16px 20px" }}>
               <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.95rem", color: "var(--accent-dark)" }}>Centro de Envíos de Encuestas</h4>
               <p style={{ margin: "6px 0 0", fontSize: "0.85rem", lineHeight: 1.4, color: "var(--text)" }}>
@@ -1873,7 +2353,9 @@ export default function EvaluationDetail() {
                                   <td>
                                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                                       <span style={{ fontWeight: 800, fontSize: "14px" }}>{participant.full_name}</span>
-                                      <span className="muted" style={{ fontSize: "11px" }}>{participant.role || "Sin rol definido"} • {participant.email}</span>
+                                      <span className="muted" style={{ fontSize: "11px" }}>
+                                        {participant.role || "Sin rol definido"} ({participant.profile === "leader" ? "Líder" : "Contribuidor Individual"}) • {participant.email}
+                                      </span>
                                     </div>
                                   </td>
                                   <td>
@@ -1891,6 +2373,17 @@ export default function EvaluationDetail() {
                                           >
                                             {copiedId === selfAssignment.id ? <Check size={10} /> : <Copy size={10} />}
                                             {copiedId === selfAssignment.id ? "Copiado" : "Copiar"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSendSingleNotification(selfAssignment.id, participant.email, participant.full_name)}
+                                            className="copy-btn-interactive"
+                                            style={{ minHeight: "24px", height: "24px", padding: "2px 6px", fontSize: "10px" }}
+                                            title="Enviar aviso por mail al encuestado"
+                                            disabled={sendingNotifications}
+                                          >
+                                            <Mail size={10} />
+                                            Aviso
                                           </button>
                                           <a href={selfLink} target="_blank" rel="noreferrer" className="copy-btn-interactive" style={{ minHeight: "24px", height: "24px", width: "24px", padding: 0 }} title="Ver encuesta en vivo">
                                             <ExternalLink size={10} />
@@ -1969,6 +2462,19 @@ export default function EvaluationDetail() {
                                                         {copiedId === assignment.id ? <Check size={10} /> : <Copy size={10} />}
                                                         {copiedId === assignment.id ? "Copiado" : "Copiar"}
                                                       </button>
+                                                      {evaluator && (
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => handleSendSingleNotification(assignment.id, evaluator.email, evaluator.full_name)}
+                                                          className="copy-btn-interactive"
+                                                          style={{ minHeight: "24px", height: "24px", padding: "2px 6px", fontSize: "10px" }}
+                                                          title="Enviar aviso por mail al encuestado"
+                                                          disabled={sendingNotifications}
+                                                        >
+                                                          <Mail size={10} />
+                                                          Aviso
+                                                        </button>
+                                                      )}
                                                       <a href={link} target="_blank" rel="noreferrer" className="copy-btn-interactive" style={{ minHeight: "24px", height: "24px", width: "24px", padding: 0 }} title="Ver encuesta en vivo">
                                                         <ExternalLink size={10} />
                                                       </a>
@@ -2049,6 +2555,16 @@ export default function EvaluationDetail() {
                                     {copiedId === selfAssignment.id ? <Check size={12} /> : <Copy size={12} />}
                                     {copiedId === selfAssignment.id ? "Copiado" : "Copiar"}
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendSingleNotification(selfAssignment.id, participant.email, participant.full_name)}
+                                    className="copy-btn-interactive"
+                                    title="Enviar aviso por mail al encuestado"
+                                    disabled={sendingNotifications}
+                                  >
+                                    <Mail size={12} />
+                                    Aviso
+                                  </button>
                                   <a href={selfLink} target="_blank" rel="noreferrer" className="copy-btn-interactive" title="Ver encuesta en vivo">
                                     <ExternalLink size={12} />
                                   </a>
@@ -2115,6 +2631,19 @@ export default function EvaluationDetail() {
                                             {copiedId === assignment.id ? <Check size={10} /> : <Copy size={10} />}
                                             {copiedId === assignment.id ? "Copiado" : "Copiar"}
                                           </button>
+                                          {evaluator && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSendSingleNotification(assignment.id, evaluator.email, evaluator.full_name)}
+                                              className="copy-btn-interactive"
+                                              style={{ minHeight: "24px", height: "24px", padding: "2px 6px", fontSize: "10px" }}
+                                              title="Enviar aviso por mail al encuestado"
+                                              disabled={sendingNotifications}
+                                            >
+                                              <Mail size={10} />
+                                              Aviso
+                                            </button>
+                                          )}
                                           <a href={link} target="_blank" rel="noreferrer" className="copy-btn-interactive" style={{ minHeight: "24px", height: "24px", width: "24px", padding: 0 }} title="Ver encuesta en vivo">
                                             <ExternalLink size={10} />
                                           </a>

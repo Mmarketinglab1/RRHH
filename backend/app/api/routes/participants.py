@@ -58,6 +58,7 @@ def create_participant(
         email=email,
         full_name=payload.full_name,
         role=payload.role,
+        profile=payload.profile or "individual_contributor",
         business_line=payload.business_line,
         performance_history=payload.performance_history,
     )
@@ -109,6 +110,7 @@ async def upload_participants_csv(
             email=email,
             full_name=row["full_name"],
             role=row.get("role"),
+            profile=row.get("profile") or "individual_contributor",
             business_line=row.get("business_line"),
             performance_history=row.get("performance_history", {}),
         )
@@ -264,6 +266,8 @@ def create_assignment(
         "weight": assignment.weight,
         "is_completed": False,
         "survey_token": survey_token.token,
+        "expires_at": survey_token.expires_at,
+        "last_notified_at": survey_token.last_notified_at,
     }
 
 
@@ -369,6 +373,8 @@ def list_assignments(
             "weight": assignment.weight,
             "is_completed": survey_token.used_at is not None,
             "survey_token": survey_token.token,
+            "expires_at": survey_token.expires_at,
+            "last_notified_at": survey_token.last_notified_at,
         })
 
     return results
@@ -409,7 +415,8 @@ def download_participants_template(
     headers = [
         "Email Evaluado", 
         "Nombre Evaluado", 
-        "Rol Evaluado", 
+        "Rol Evaluado",
+        "Perfil Evaluado",
         "Línea de Negocio",
         "Email Evaluador", 
         "Relacion", 
@@ -425,6 +432,7 @@ def download_participants_template(
         "laura@ejemplo.com",
         "Laura Esparza",
         "SR",
+        "Líder",
         "Diabetes",
         "mguinea@ejemplo.com",
         "Líder directo",
@@ -437,6 +445,7 @@ def download_participants_template(
         "laura@ejemplo.com",
         "Laura Esparza",
         "SR",
+        "Líder",
         "Diabetes",
         "pedro@ejemplo.com",
         "Par",
@@ -523,6 +532,8 @@ async def import_participants_xlsx(
             header_indices["eval_name"] = idx
         elif any(k in clean_text for k in ["rol evaluado", "rol", "puesto"]):
             header_indices["eval_role"] = idx
+        elif any(k in clean_text for k in ["perfil evaluado", "perfil", "profile"]):
+            header_indices["eval_profile"] = idx
         elif any(k in clean_text for k in ["línea", "linea", "business line", "unidad", "departamento", "area", "área"]):
             header_indices["eval_line"] = idx
         elif any(k in clean_text for k in ["email evaluador", "correo evaluador"]):
@@ -541,6 +552,7 @@ async def import_participants_xlsx(
     eval_email_idx = header_indices.get("eval_email", 0)
     eval_name_idx = header_indices.get("eval_name", 1)
     eval_role_idx = header_indices.get("eval_role", 2)
+    eval_profile_idx = header_indices.get("eval_profile", None)
     eval_line_idx = header_indices.get("eval_line", 3 if "eval_line" in header_indices else None)
     evaluator_email_idx = header_indices.get("evaluator_email", 4 if eval_line_idx == 3 else 3)
     relationship_idx = header_indices.get("relationship", 5 if eval_line_idx == 3 else 4)
@@ -553,6 +565,11 @@ async def import_participants_xlsx(
         evaluatee_email = str(row[eval_email_idx]).strip().lower()
         evaluatee_name = str(row[eval_name_idx]).strip() if len(row) > eval_name_idx and row[eval_name_idx] is not None else ""
         evaluatee_role = str(row[eval_role_idx]).strip() if len(row) > eval_role_idx and row[eval_role_idx] is not None else None
+        raw_profile = str(row[eval_profile_idx]).strip().lower() if eval_profile_idx is not None and len(row) > eval_profile_idx and row[eval_profile_idx] is not None else ""
+        if raw_profile in ("líder", "lider", "leader", "manager", "jefe"):
+            evaluatee_profile = "leader"
+        else:
+            evaluatee_profile = "individual_contributor"
         evaluatee_line = str(row[eval_line_idx]).strip() if eval_line_idx is not None and len(row) > eval_line_idx and row[eval_line_idx] is not None else None
         
         evaluator_email = str(row[evaluator_email_idx]).strip().lower() if len(row) > evaluator_email_idx and row[evaluator_email_idx] is not None else None
@@ -593,6 +610,7 @@ async def import_participants_xlsx(
                 email=evaluatee_email,
                 full_name=evaluatee_name,
                 role=evaluatee_role,
+                profile=evaluatee_profile,
                 business_line=evaluatee_line,
                 performance_history=perf_history,
             )

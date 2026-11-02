@@ -23,6 +23,7 @@ class Evaluation(Base):
     scale_type: Mapped[str | None] = mapped_column(String(50), default="numeric_1_10", nullable=True)
     score_thresholds: Mapped[dict | None] = mapped_column(JSON, default=dict, nullable=True)
     report_config: Mapped[dict | None] = mapped_column(JSON, default=dict, nullable=True)
+    survey_config: Mapped[dict | None] = mapped_column(JSON, default=dict, nullable=True)
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[PyUUID | None] = mapped_column(ForeignKey("users.id"))

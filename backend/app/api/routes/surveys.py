@@ -35,18 +35,29 @@ def generate_assignment_token(
     )
 
 
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 @router.get("/public/{token}", response_model=PublicSurveyRead)
 def get_public_survey(token: str, db: Session = Depends(get_db)) -> PublicSurveyRead:
     survey_token = db.scalar(select(SurveyToken).where(SurveyToken.token == token))
     if not survey_token:
         raise HTTPException(status_code=404, detail="Survey not found")
-    if survey_token.expires_at and survey_token.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=410, detail="Survey expired")
 
     assignment = db.get(EvaluatorAssignment, survey_token.assignment_id)
     evaluation = db.get(Evaluation, survey_token.evaluation_id)
     evaluatee = db.get(Participant, assignment.evaluatee_id)
     evaluator = db.get(Participant, assignment.evaluator_id)
+
+    effective_expires_at = (evaluation.ends_at if evaluation and evaluation.ends_at else survey_token.expires_at)
+    exp_utc = _ensure_utc(effective_expires_at)
+    if exp_utc and exp_utc < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Esta encuesta ha caducado. La fecha límite para responder ha vencido.")
 
     questions = db.execute(
         select(Question, Competency)
@@ -63,6 +74,7 @@ def get_public_survey(token: str, db: Session = Depends(get_db)) -> PublicSurvey
         evaluatee_name=evaluatee.full_name,
         evaluator_name=evaluator.full_name,
         relationship=assignment.relationship,
+        expires_at=effective_expires_at,
         questions=[
             SurveyQuestion(
                 id=question.id,
@@ -90,8 +102,11 @@ def submit_public_survey(
     survey_token = db.scalar(select(SurveyToken).where(SurveyToken.token == token))
     if not survey_token:
         raise HTTPException(status_code=404, detail="Survey not found")
-    if survey_token.expires_at and survey_token.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=410, detail="Survey expired")
+    evaluation = db.get(Evaluation, survey_token.evaluation_id)
+    effective_expires_at = (evaluation.ends_at if evaluation and evaluation.ends_at else survey_token.expires_at)
+    exp_utc = _ensure_utc(effective_expires_at)
+    if exp_utc and exp_utc < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Esta encuesta ha caducado. La fecha límite para responder ha vencido.")
 
     valid_questions = set(
         db.scalars(

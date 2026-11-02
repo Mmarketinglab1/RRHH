@@ -391,6 +391,11 @@ export default function SurveyPage() {
                 Evaluador: {survey.evaluator_name} | Evaluado: {survey.evaluatee_name}
               </p>
             )}
+            {survey?.expires_at && (
+              <p style={{ marginTop: 6, fontSize: "0.82rem", fontWeight: 600, color: "#875800", background: "#fff8e6", border: "1px solid #ffe58f", display: "inline-block", padding: "4px 10px", borderRadius: 6 }}>
+                ⏰ Fecha de caducidad: {new Date(survey.expires_at).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" })}
+              </p>
+            )}
           </div>
         </div>
 

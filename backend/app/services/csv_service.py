@@ -19,6 +19,7 @@ def parse_participants_csv(raw_csv: str) -> list[dict]:
         raise ValueError("El CSV debe incluir columnas de email y nombre completo (full_name)")
 
     role_key = next((field_map[k] for k in ["role", "rol", "puesto", "cargo"] if k in field_map), None)
+    profile_key = next((field_map[k] for k in ["profile", "perfil"] if k in field_map), None)
     line_key = next((field_map[k] for k in ["business_line", "linea", "línea", "line", "departamento", "unidad", "area", "área"] if k in field_map), None)
 
     # Identificar columnas de evaluación o desempeño histórico (ej. 2023, 2024, 2025, ev_2023, etc.)
@@ -35,6 +36,11 @@ def parse_participants_csv(raw_csv: str) -> list[dict]:
         email = (row.get(email_key) or "").strip().lower()
         full_name = (row.get(name_key) or "").strip()
         role = (row.get(role_key) or "").strip() if role_key else None
+        raw_profile = (row.get(profile_key) or "").strip().lower() if profile_key else ""
+        if raw_profile in ("líder", "lider", "leader", "manager", "jefe"):
+            profile = "leader"
+        else:
+            profile = "individual_contributor"
         business_line = (row.get(line_key) or "").strip() if line_key else None
 
         perf_history: dict[str, str] = {}
@@ -48,6 +54,7 @@ def parse_participants_csv(raw_csv: str) -> list[dict]:
                 "email": email,
                 "full_name": full_name,
                 "role": role or None,
+                "profile": profile,
                 "business_line": business_line or None,
                 "performance_history": perf_history,
             })

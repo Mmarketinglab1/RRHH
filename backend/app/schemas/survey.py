@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -27,6 +28,7 @@ class PublicSurveyRead(BaseModel):
     evaluatee_name: str
     evaluator_name: str
     relationship: str
+    expires_at: datetime | None = None
     questions: list[SurveyQuestion]
 
 

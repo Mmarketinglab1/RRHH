@@ -14,6 +14,7 @@ class EvaluationCreate(BaseModel):
     scale_type: str | None = Field(default="numeric_1_10", max_length=50)
     score_thresholds: dict | None = None
     report_config: dict | None = None
+    survey_config: dict | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
 
@@ -28,6 +29,7 @@ class EvaluationUpdate(BaseModel):
     scale_type: str | None = Field(default=None, max_length=50)
     score_thresholds: dict | None = None
     report_config: dict | None = None
+    survey_config: dict | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
 
@@ -43,11 +45,20 @@ class EvaluationRead(BaseModel):
     scale_type: str | None = "numeric_1_10"
     score_thresholds: dict | None = None
     report_config: dict | None = None
+    survey_config: dict | None = None
     starts_at: datetime | None
     ends_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SurveyNotificationRequest(BaseModel):
+    assignment_ids: list[UUID] | None = None
+    only_pending: bool = True
+    frontend_url: str | None = None
+    custom_message: str | None = None
+    subject: str | None = None
 
 
 class CompetencyBankCreate(BaseModel):

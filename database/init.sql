@@ -33,6 +33,8 @@ CREATE TABLE evaluations (
     consultant_logo_url VARCHAR(500),
     scale_type VARCHAR(50) DEFAULT 'numeric_1_10',
     score_thresholds JSONB DEFAULT '{"high": 8.5, "medium": 7.0}'::jsonb,
+    report_config JSONB DEFAULT '{}'::jsonb,
+    survey_config JSONB DEFAULT '{}'::jsonb,
     starts_at TIMESTAMPTZ,
     ends_at TIMESTAMPTZ,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -103,6 +105,7 @@ CREATE TABLE participants (
     email VARCHAR(255) NOT NULL,
     full_name VARCHAR(160) NOT NULL,
     role VARCHAR(120),
+    profile VARCHAR(60) DEFAULT 'individual_contributor',
     business_line VARCHAR(120),
     performance_history JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -131,6 +134,7 @@ CREATE TABLE survey_tokens (
     token VARCHAR(120) NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ,
     used_at TIMESTAMPTZ,
+    last_notified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

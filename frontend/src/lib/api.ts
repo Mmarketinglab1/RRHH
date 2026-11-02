@@ -12,6 +12,7 @@ export type Evaluation = {
   scale_type?: string | null;
   score_thresholds?: { high: number; medium: number } | null;
   report_config?: Record<string, any> | null;
+  survey_config?: Record<string, any> | null;
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
@@ -54,6 +55,8 @@ export type Participant = {
   email: string;
   full_name: string;
   role: string | null;
+  profile?: string | null;
+  business_line?: string | null;
 };
 
 export type Assignment = {
@@ -65,6 +68,8 @@ export type Assignment = {
   weight: string;
   is_completed?: boolean;
   survey_token?: string | null;
+  expires_at?: string | null;
+  last_notified_at?: string | null;
 };
 
 export type QuestionResult = {
@@ -229,6 +234,7 @@ export type PublicSurvey = {
   evaluatee_name: string;
   evaluator_name: string;
   relationship: string;
+  expires_at?: string | null;
   questions: Array<{
     id: string;
     text: string;

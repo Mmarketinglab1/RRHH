@@ -1,14 +1,27 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.evaluation import Evaluation
+from app.models.participant import EvaluatorAssignment, Participant
+from app.models.response import SurveyToken
 from app.schemas.auth import CurrentUser
-from app.schemas.evaluation import EvaluationCreate, EvaluationRead, EvaluationUpdate
+from app.schemas.evaluation import (
+    EvaluationCreate,
+    EvaluationRead,
+    EvaluationUpdate,
+    SurveyNotificationRequest,
+)
+from app.services.email_service import (
+    build_survey_notification_email,
+    send_email_notification,
+)
+from app.services.token_service import create_survey_token
 
 router = APIRouter()
 
@@ -28,6 +41,8 @@ def create_evaluation(
         consultant_logo_url=payload.consultant_logo_url,
         scale_type=payload.scale_type or "numeric_1_10",
         score_thresholds=payload.score_thresholds or {"high": 8.5, "medium": 7.0},
+        report_config=payload.report_config or {},
+        survey_config=payload.survey_config or {},
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
         created_by=current_user.id,
@@ -78,9 +93,157 @@ def update_evaluation(
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(evaluation, field, value)
+
+    if "ends_at" in updates:
+        db.execute(
+            update(SurveyToken)
+            .where(
+                SurveyToken.company_id == current_user.company_id,
+                SurveyToken.evaluation_id == evaluation_id,
+            )
+            .values(expires_at=evaluation.ends_at)
+        )
+
     db.commit()
     db.refresh(evaluation)
     return evaluation
+
+
+@router.post("/{evaluation_id}/notify-respondents")
+def notify_survey_respondents(
+    evaluation_id: UUID,
+    payload: SurveyNotificationRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    evaluation = db.get(Evaluation, evaluation_id)
+    if not evaluation or evaluation.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    stmt = select(EvaluatorAssignment).where(
+        EvaluatorAssignment.company_id == current_user.company_id,
+        EvaluatorAssignment.evaluation_id == evaluation_id,
+    )
+    if payload.assignment_ids:
+        stmt = stmt.where(EvaluatorAssignment.id.in_(payload.assignment_ids))
+
+    assignments = db.scalars(stmt).all()
+    if not assignments:
+        return {
+            "message": "No se encontraron encuestas para notificar.",
+            "sent_count": 0,
+            "registered_count": 0,
+            "smtp_configured": False,
+            "recipients": [],
+        }
+
+    tokens = db.scalars(
+        select(SurveyToken).where(
+            SurveyToken.company_id == current_user.company_id,
+            SurveyToken.evaluation_id == evaluation_id,
+        )
+    ).all()
+    token_map = {t.assignment_id: t for t in tokens}
+
+    rel_friendly_names = {
+        "self": "Autoevaluación",
+        "peer": "Par",
+        "direct_report": "Reporte Directo",
+        "line_manager": "Líder directo",
+        "indirect_manager": "Líder indirecto",
+        "external_client": "Cliente Externo",
+        "internal_client": "Cliente Interno",
+    }
+
+    survey_cfg = dict(evaluation.survey_config or {})
+    custom_message = (
+        payload.custom_message
+        if payload.custom_message is not None
+        else survey_cfg.get("email_custom_message")
+    )
+    subject_override = (
+        payload.subject
+        if payload.subject is not None
+        else survey_cfg.get("email_subject")
+    )
+    base_url = (payload.frontend_url or "").rstrip("/")
+
+    now_utc = datetime.now(timezone.utc)
+    sent_count = 0
+    registered_count = 0
+    recipients_detail = []
+
+    for asgn in assignments:
+        st = token_map.get(asgn.id)
+        if not st:
+            st = create_survey_token(db, asgn)
+            token_map[asgn.id] = st
+
+        if payload.only_pending and st.used_at is not None:
+            continue
+
+        evaluatee = db.get(Participant, asgn.evaluatee_id)
+        evaluator = db.get(Participant, asgn.evaluator_id)
+        if not evaluatee or not evaluator or not evaluator.email:
+            continue
+
+        survey_url = f"{base_url}/survey/{st.token}" if base_url else f"/survey/{st.token}"
+        rel_label = rel_friendly_names.get(asgn.relationship, asgn.relationship)
+        effective_exp = evaluation.ends_at or st.expires_at
+
+        subject, plain_body, html_body = build_survey_notification_email(
+            evaluation_title=evaluation.title,
+            evaluator_name=evaluator.full_name,
+            evaluatee_name=evaluatee.full_name,
+            relationship_label=rel_label,
+            survey_url=survey_url,
+            expires_at=effective_exp,
+            custom_message=custom_message,
+            subject_override=subject_override,
+        )
+
+        sent_ok, status_msg = send_email_notification(
+            to_email=evaluator.email,
+            subject=subject,
+            plain_body=plain_body,
+            html_body=html_body,
+            smtp_override=survey_cfg,
+        )
+
+        st.last_notified_at = now_utc
+        registered_count += 1
+        if sent_ok:
+            sent_count += 1
+
+        recipients_detail.append({
+            "assignment_id": str(asgn.id),
+            "evaluator_email": evaluator.email,
+            "evaluator_name": evaluator.full_name,
+            "evaluatee_name": evaluatee.full_name,
+            "relationship": rel_label,
+            "survey_url": survey_url,
+            "sent_via_smtp": sent_ok,
+            "status": status_msg,
+            "subject": subject,
+            "plain_body": plain_body,
+            "notified_at": now_utc.isoformat(),
+        })
+
+    survey_cfg["last_bulk_notified_at"] = now_utc.isoformat()
+    evaluation.survey_config = survey_cfg
+    db.commit()
+
+    return {
+        "message": (
+            f"Se enviaron {sent_count} avisos por correo electrónico vía SMTP."
+            if sent_count > 0
+            else f"Se procesaron y registraron {registered_count} avisos para los encuestados."
+        ),
+        "sent_count": sent_count,
+        "registered_count": registered_count,
+        "smtp_configured": sent_count > 0,
+        "recipients": recipients_detail,
+    }
 
 
 @router.post("/{evaluation_id}/seed-demo")
@@ -162,12 +325,12 @@ def seed_demo_data(
 
     # 3. Crear 3 Participantes ficticios
     participant_defs = [
-        ("sofia.martinez@empresa.com", "Sofía Martínez", "Directora de Producto"),
-        ("carlos.benitez@empresa.com", "Carlos Benítez", "Tech Lead / VP Eng"),
-        ("mariana.gomez@empresa.com", "Mariana Gómez", "Sr. Product Designer"),
+        ("sofia.martinez@empresa.com", "Sofía Martínez", "Directora de Producto", "leader"),
+        ("carlos.benitez@empresa.com", "Carlos Benítez", "Tech Lead / VP Eng", "leader"),
+        ("mariana.gomez@empresa.com", "Mariana Gómez", "Sr. Product Designer", "individual_contributor"),
     ]
     participants_map = {}
-    for email, name, role in participant_defs:
+    for email, name, role, profile in participant_defs:
         p = db.scalar(
             select(Participant).where(
                 Participant.company_id == current_user.company_id,
@@ -182,6 +345,7 @@ def seed_demo_data(
                 email=email,
                 full_name=name,
                 role=role,
+                profile=profile,
             )
             db.add(p)
             db.flush()
